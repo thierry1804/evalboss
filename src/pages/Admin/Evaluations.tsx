@@ -235,11 +235,11 @@ export function Evaluations() {
                         </Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {evaluation.scores?.autoEvaluation?.total?.toFixed(1) || 'N/A'} / 100
+                        {evaluation.scores?.autoEvaluation?.total?.toFixed(1) || 'N/A'}%
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {evaluation.scores?.autoEvaluation?.competencesIA?.toFixed(1) || 'N/A'} / 100
+                          {evaluation.scores?.autoEvaluation?.competencesIA?.toFixed(1) || 'N/A'}%
                         </div>
                         {evaluation.scores?.autoEvaluation?.niveauIA && (
                           <Badge variant="ia" className="mt-1">

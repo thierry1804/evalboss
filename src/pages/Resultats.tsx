@@ -11,7 +11,8 @@ import { BarChartComponent } from '../components/charts/BarChart';
 import { generateRecommendations, generateAnalyseCompetences } from '../lib/recommendations';
 import { NIVEAU_IA_LABELS, PROFIL_LABELS } from '../types';
 import { formatDate } from '../lib/utils';
-import { CheckCircle, AlertCircle, TrendingUp, Sparkles } from 'lucide-react';
+import { exportEvaluationToPDF } from '../lib/pdfExport';
+import { CheckCircle, AlertCircle, TrendingUp, Sparkles, Download } from 'lucide-react';
 
 export function Resultats() {
   const { evaluationId } = useParams<{ evaluationId: string }>();
@@ -53,6 +54,12 @@ export function Resultats() {
     scores
   );
   const analyse = generateAnalyseCompetences(scores);
+
+  // Calculer les moyennes originales (sur 5) pour affichage avec coefficient
+  const moyenneSoftSkills = scores.softSkills / 20;
+  const moyenneHardSkills = scores.hardSkills / 20;
+  const moyennePerformanceProjet = scores.performanceProjet / 20;
+  const moyenneIA = scores.competencesIA / 20;
 
   // Données pour le graphique radar principal
   const radarData = [
@@ -117,25 +124,33 @@ export function Resultats() {
         </div>
 
         {/* Scores principaux */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           <Card className="text-center">
-            <div className="text-3xl font-bold text-primary-600 mb-2">{scores.total.toFixed(1)}</div>
-            <div className="text-sm text-gray-600">Score Total / 100</div>
+            <div className="text-3xl font-bold text-primary-600 mb-2">{scores.total.toFixed(1)}%</div>
+            <div className="text-sm text-gray-600">Score Total</div>
           </Card>
           <Card className="text-center">
-            <div className="text-3xl font-bold text-gray-700 mb-2">{scores.softSkills.toFixed(1)}</div>
+            <div className="text-3xl font-bold text-gray-700 mb-2">{scores.softSkills.toFixed(1)}%</div>
             <div className="text-sm text-gray-600">Soft Skills</div>
+            <div className="text-xs text-gray-500 mt-1">{moyenneSoftSkills.toFixed(1)}/5</div>
           </Card>
           <Card className="text-center">
-            <div className="text-3xl font-bold text-gray-700 mb-2">{scores.hardSkills.toFixed(1)}</div>
+            <div className="text-3xl font-bold text-gray-700 mb-2">{scores.hardSkills.toFixed(1)}%</div>
             <div className="text-sm text-gray-600">Hard Skills</div>
+            <div className="text-xs text-gray-500 mt-1">{(moyenneHardSkills * 2).toFixed(1)}/10</div>
           </Card>
           <Card className="text-center">
-            <div className="text-3xl font-bold text-ia-purple mb-2">{scores.competencesIA.toFixed(1)}</div>
+            <div className="text-3xl font-bold text-gray-700 mb-2">{scores.performanceProjet.toFixed(1)}%</div>
+            <div className="text-sm text-gray-600">Performance Projet</div>
+            <div className="text-xs text-gray-500 mt-1">{(moyennePerformanceProjet * 2).toFixed(1)}/10</div>
+          </Card>
+          <Card className="text-center">
+            <div className="text-3xl font-bold text-ia-purple mb-2">{scores.competencesIA.toFixed(1)}%</div>
             <div className="text-sm text-gray-600 flex items-center justify-center gap-1">
               <Sparkles size={16} />
               Compétences IA
             </div>
+            <div className="text-xs text-gray-500 mt-1">{(moyenneIA * 2).toFixed(1)}/10</div>
           </Card>
         </div>
 
@@ -223,7 +238,7 @@ export function Resultats() {
                 {NIVEAU_IA_LABELS[scores.niveauIA]}
               </Badge>
               <p className="text-sm text-gray-600 mt-2">
-                Score IA : {scores.competencesIA.toFixed(1)} / 100
+                Score IA : {scores.competencesIA.toFixed(1)}%
               </p>
             </div>
 
@@ -292,20 +307,29 @@ export function Resultats() {
           <Button variant="ghost" onClick={() => navigate(`/questionnaire/${currentEvaluation.id}`)}>
             ← Retour au questionnaire
           </Button>
-          {!isSubmitted ? (
+          <div className="flex gap-3">
             <Button
-              variant="primary"
-              size="lg"
-              onClick={() => setShowSubmitModal(true)}
-              isLoading={isSubmitting}
+              variant="outline"
+              onClick={() => exportEvaluationToPDF(currentEvaluation)}
             >
-              Soumettre l'évaluation
+              <Download size={16} className="mr-2" />
+              Exporter en PDF
             </Button>
-          ) : (
-            <Badge variant="success" className="text-lg px-4 py-2">
-              Évaluation soumise le {currentEvaluation.timestamps.soumission ? formatDate(currentEvaluation.timestamps.soumission) : ''}
-            </Badge>
-          )}
+            {!isSubmitted ? (
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => setShowSubmitModal(true)}
+                isLoading={isSubmitting}
+              >
+                Soumettre l'évaluation
+              </Button>
+            ) : (
+              <Badge variant="success" className="text-lg px-4 py-2">
+                Évaluation soumise le {currentEvaluation.timestamps.soumission ? formatDate(currentEvaluation.timestamps.soumission) : ''}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Modal de confirmation de soumission */}

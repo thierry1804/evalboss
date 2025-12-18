@@ -42,9 +42,6 @@ export function Questionnaire() {
   }
 
   const groupes: GroupeQuestion[] = ['soft_skills', 'hard_skills', 'performance_projet'];
-  const currentGroupeIndex = groupes.indexOf(currentGroupe);
-  const canGoNext = currentGroupeIndex < groupes.length - 1;
-  const canGoPrevious = currentGroupeIndex > 0;
 
   const questionsDuGroupe = currentEvaluation.reponses.filter(
     (r) => r.groupe === currentGroupe
@@ -64,19 +61,6 @@ export function Questionnaire() {
     }
   };
 
-  const handleNext = () => {
-    if (canGoNext) {
-      setCurrentGroupe(groupes[currentGroupeIndex + 1]);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  const handlePrevious = () => {
-    if (canGoPrevious) {
-      setCurrentGroupe(groupes[currentGroupeIndex - 1]);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
 
   const handleGoToResults = () => {
     // Vérifier que toutes les questions sont répondues
@@ -95,49 +79,22 @@ export function Questionnaire() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Questionnaire d'auto-évaluation
-          </h1>
-          <p className="text-gray-600">
-            {currentEvaluation.collaborateur.prenom} {currentEvaluation.collaborateur.nom} -{' '}
-            {currentEvaluation.collaborateur.poste}
-          </p>
-        </div>
-
-        <ProgressBar reponses={currentEvaluation.reponses} />
-
-        {/* Navigation entre groupes */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              {GROUPE_LABELS[currentGroupe]}
-            </h2>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handlePrevious}
-                disabled={!canGoPrevious}
-              >
-                <ArrowLeft size={16} className="mr-2" />
-                Précédent
-              </Button>
-              {canGoNext ? (
-                <Button variant="primary" onClick={handleNext}>
-                  Suivant
-                  <ArrowRight size={16} className="ml-2" />
-                </Button>
-              ) : (
-                <Button variant="primary" onClick={handleGoToResults}>
-                  Voir les résultats
-                  <ArrowRight size={16} className="ml-2" />
-                </Button>
-              )}
-            </div>
+        {/* Header fixe */}
+        <div className="sticky top-0 z-10 bg-gray-50 pb-4 pt-2 mb-6">
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Questionnaire d'auto-évaluation
+            </h1>
+            <p className="text-gray-600">
+              {currentEvaluation.collaborateur.prenom} {currentEvaluation.collaborateur.nom} -{' '}
+              {currentEvaluation.collaborateur.poste}
+            </p>
           </div>
 
-          {/* Indicateur de progression des groupes */}
-          <div className="flex gap-2 mb-6">
+          <ProgressBar reponses={currentEvaluation.reponses} />
+
+          {/* Onglets fixe */}
+          <div className="flex gap-2 mt-4">
             {groupes.map((groupe) => (
               <button
                 key={groupe}

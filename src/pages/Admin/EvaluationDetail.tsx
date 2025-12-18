@@ -253,6 +253,17 @@ export function EvaluationDetail() {
   const scoresAuto = evaluation.scores.autoEvaluation;
   const scoresMgr = scoresManager || evaluation.scores.manager;
 
+  // Calculer les moyennes originales (sur 5) pour affichage avec coefficient
+  const moyenneSoftSkillsAuto = scoresAuto.softSkills / 20;
+  const moyenneHardSkillsAuto = scoresAuto.hardSkills / 20;
+  const moyennePerformanceProjetAuto = scoresAuto.performanceProjet / 20;
+  const moyenneIAAuto = scoresAuto.competencesIA / 20;
+  
+  const moyenneSoftSkillsMgr = scoresMgr ? scoresMgr.softSkills / 20 : 0;
+  const moyenneHardSkillsMgr = scoresMgr ? scoresMgr.hardSkills / 20 : 0;
+  const moyennePerformanceProjetMgr = scoresMgr ? scoresMgr.performanceProjet / 20 : 0;
+  const moyenneIAMgr = scoresMgr ? scoresMgr.competencesIA / 20 : 0;
+
   // Données pour comparaison radar
   const radarDataAuto = [
     { subject: 'Soft Skills', value: scoresAuto.softSkills },
@@ -373,24 +384,28 @@ export function EvaluationDetail() {
           <h3 className="text-lg font-semibold mb-4">Scores Auto-évaluation</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-primary-600">{scoresAuto.total.toFixed(1)}</div>
+              <div className="text-2xl font-bold text-primary-600">{scoresAuto.total.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Total</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">{scoresAuto.softSkills.toFixed(1)}</div>
+              <div className="text-2xl font-bold">{scoresAuto.softSkills.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Soft Skills</div>
+              <div className="text-xs text-gray-500 mt-1">{moyenneSoftSkillsAuto.toFixed(1)}/5</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">{scoresAuto.hardSkills.toFixed(1)}</div>
+              <div className="text-2xl font-bold">{scoresAuto.hardSkills.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Hard Skills</div>
+              <div className="text-xs text-gray-500 mt-1">{(moyenneHardSkillsAuto * 2).toFixed(1)}/10</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">{scoresAuto.performanceProjet.toFixed(1)}</div>
+              <div className="text-2xl font-bold">{scoresAuto.performanceProjet.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Performance</div>
+              <div className="text-xs text-gray-500 mt-1">{(moyennePerformanceProjetAuto * 2).toFixed(1)}/10</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-ia-purple">{scoresAuto.competencesIA.toFixed(1)}</div>
+              <div className="text-2xl font-bold text-ia-purple">{scoresAuto.competencesIA.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Compétences IA</div>
+              <div className="text-xs text-gray-500 mt-1">{(moyenneIAAuto * 2).toFixed(1)}/10</div>
               <Badge variant="ia" className="mt-1">
                 {NIVEAU_IA_LABELS[scoresAuto.niveauIA]}
               </Badge>
@@ -404,24 +419,28 @@ export function EvaluationDetail() {
             <h3 className="text-lg font-semibold mb-4">Scores Manager</h3>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-primary-600">{scoresMgr.total.toFixed(1)}</div>
+                <div className="text-2xl font-bold text-primary-600">{scoresMgr.total.toFixed(1)}%</div>
                 <div className="text-sm text-gray-600">Total</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold">{scoresMgr.softSkills.toFixed(1)}</div>
+                <div className="text-2xl font-bold">{scoresMgr.softSkills.toFixed(1)}%</div>
                 <div className="text-sm text-gray-600">Soft Skills</div>
+                <div className="text-xs text-gray-500 mt-1">{moyenneSoftSkillsMgr.toFixed(1)}/5</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold">{scoresMgr.hardSkills.toFixed(1)}</div>
+                <div className="text-2xl font-bold">{scoresMgr.hardSkills.toFixed(1)}%</div>
                 <div className="text-sm text-gray-600">Hard Skills</div>
+                <div className="text-xs text-gray-500 mt-1">{(moyenneHardSkillsMgr * 2).toFixed(1)}/10</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold">{scoresMgr.performanceProjet.toFixed(1)}</div>
+                <div className="text-2xl font-bold">{scoresMgr.performanceProjet.toFixed(1)}%</div>
                 <div className="text-sm text-gray-600">Performance</div>
+                <div className="text-xs text-gray-500 mt-1">{(moyennePerformanceProjetMgr * 2).toFixed(1)}/10</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-ia-purple">{scoresMgr.competencesIA.toFixed(1)}</div>
+                <div className="text-2xl font-bold text-ia-purple">{scoresMgr.competencesIA.toFixed(1)}%</div>
                 <div className="text-sm text-gray-600">Compétences IA</div>
+                <div className="text-xs text-gray-500 mt-1">{(moyenneIAMgr * 2).toFixed(1)}/10</div>
                 <Badge variant="ia" className="mt-1">
                   {NIVEAU_IA_LABELS[scoresMgr.niveauIA]}
                 </Badge>

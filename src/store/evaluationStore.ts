@@ -150,7 +150,11 @@ export const useEvaluationStore = create<EvaluationState>((set, get) => ({
             dateDerniereEval: data.date_derniere_eval ? new Date(data.date_derniere_eval) : undefined,
           },
           reponses: (data.reponses as any[]) || [],
-          scores: data.scores as { autoEvaluation: ScoreDetail; manager?: ScoreDetail },
+          // Recalculer les scores à partir des réponses pour s'assurer qu'ils sont en pourcentage
+          scores: {
+            autoEvaluation: calculateScores((data.reponses as any[]) || []),
+            manager: (data.scores as any)?.manager,
+          },
           commentaires: (data.commentaires as any) || {},
           statut: data.statut as any,
           timestamps: {

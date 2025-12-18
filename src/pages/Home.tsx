@@ -134,7 +134,7 @@ export function Home() {
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Évaluation des Compétences
+            Évaluation des compétences
           </h1>
           <p className="text-gray-600">
             Évaluez vos compétences professionnelles et vos compétences en Intelligence Artificielle
@@ -149,64 +149,73 @@ export function Home() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormInput
-                label="Matricule"
-                value={formData.matricule}
-                onChange={(e) => handleChange('matricule', e.target.value)}
-                error={validationErrors.matricule}
-                required
-                placeholder="ABC123"
-              />
+            <div className="space-y-6">
+              {/* Matricule, Nom, Prénom sur la même ligne */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <FormInput
+                  label="Matricule"
+                  value={formData.matricule}
+                  onChange={(e) => handleChange('matricule', e.target.value)}
+                  error={validationErrors.matricule}
+                  required
+                  placeholder="ABC123"
+                />
 
-              <FormInput
-                label="Nom"
-                value={formData.nom}
-                onChange={(e) => handleChange('nom', e.target.value)}
-                error={validationErrors.nom}
-                required
-              />
+                <FormInput
+                  label="Nom"
+                  value={formData.nom}
+                  onChange={(e) => handleChange('nom', e.target.value)}
+                  error={validationErrors.nom}
+                  required
+                />
 
-              <FormInput
-                label="Prénom"
-                value={formData.prenom}
-                onChange={(e) => handleChange('prenom', e.target.value)}
-                error={validationErrors.prenom}
-                required
-              />
+                <FormInput
+                  label="Prénom"
+                  value={formData.prenom}
+                  onChange={(e) => handleChange('prenom', e.target.value)}
+                  error={validationErrors.prenom}
+                  required
+                />
+              </div>
 
-              <FormSelect
-                label="Poste"
-                value={formData.poste}
-                onChange={(e) => handleChange('poste', e.target.value)}
-                error={validationErrors.poste}
-                options={profilOptions}
-                required
-              />
+              {/* Poste et Niveau de séniorité sur la même ligne */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormSelect
+                  label="Poste"
+                  value={formData.poste}
+                  onChange={(e) => handleChange('poste', e.target.value)}
+                  error={validationErrors.poste}
+                  options={profilOptions}
+                  required
+                />
 
-              <FormSelect
-                label="Niveau de séniorité"
-                value={formData.niveauSeniorite}
-                onChange={(e) => handleChange('niveauSeniorite', e.target.value)}
-                error={validationErrors.niveauSeniorite}
-                options={niveauOptions}
-                required
-              />
+                <FormSelect
+                  label="Niveau de séniorité"
+                  value={formData.niveauSeniorite}
+                  onChange={(e) => handleChange('niveauSeniorite', e.target.value)}
+                  error={validationErrors.niveauSeniorite}
+                  options={niveauOptions}
+                  required
+                />
+              </div>
 
-              <FormDatePicker
-                label="Date d'intégration"
-                value={formData.dateIntegration}
-                onChange={(e) => handleChange('dateIntegration', e.target.value)}
-                error={validationErrors.dateIntegration}
-                required
-              />
+              {/* Les dates sur la même ligne */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormDatePicker
+                  label="Date d'intégration"
+                  value={formData.dateIntegration}
+                  onChange={(e) => handleChange('dateIntegration', e.target.value)}
+                  error={validationErrors.dateIntegration}
+                  required
+                />
 
-              <FormDatePicker
-                label="Date de la dernière évaluation (optionnel)"
-                value={formData.dateDerniereEval}
-                onChange={(e) => handleChange('dateDerniereEval', e.target.value)}
-                error={validationErrors.dateDerniereEval}
-              />
+                <FormDatePicker
+                  label="Date de la dernière évaluation (optionnel)"
+                  value={formData.dateDerniereEval}
+                  onChange={(e) => handleChange('dateDerniereEval', e.target.value)}
+                  error={validationErrors.dateDerniereEval}
+                />
+              </div>
             </div>
 
             <div className="flex justify-end pt-4">

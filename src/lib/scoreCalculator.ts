@@ -21,8 +21,8 @@ function calculateGroupScore(
   }, 0);
 
   const moyenne = sum / groupeReponses.length;
-  // Score = moyenne × coefficient
-  return Math.round((moyenne * coefficient * 100) / 5) / 100; // Arrondi à 2 décimales, max 5 points
+  // Score = moyenne × 20 pour avoir un score sur 100 (moyenne sur 5 points)
+  return Math.round((moyenne * 20 * 100)) / 100; // Arrondi à 2 décimales, max 100
 }
 
 // Calculer le score des compétences IA
@@ -36,8 +36,8 @@ function calculateIAScore(reponses: Reponse[]): number {
   }, 0);
 
   const moyenne = sum / iaReponses.length;
-  // Score IA = moyenne × coefficient (même formule que les autres groupes)
-  return Math.round((moyenne * COEFFICIENT_COMPETENCES_IA * 100) / 5) / 100;
+  // Score IA = moyenne × 20 pour avoir un score sur 100 (moyenne sur 5 points)
+  return Math.round((moyenne * 20 * 100)) / 100;
 }
 
 // Déterminer le niveau IA basé sur le score
@@ -58,8 +58,8 @@ export function calculateScores(reponses: Reponse[]): ScoreDetail {
     COEFFICIENT_PERFORMANCE_PROJET
   );
 
-  // Score total = somme des scores par groupe (max 100)
-  const total = Math.min(100, softSkills + hardSkills + performanceProjet);
+  // Score total = moyenne simple des trois scores (tous sur 100)
+  const total = Math.round(((softSkills + hardSkills + performanceProjet) / 3) * 100) / 100;
 
   // Score IA spécifique
   const competencesIA = calculateIAScore(reponses);
@@ -91,8 +91,8 @@ function calculateManagerGroupScore(
   }, 0);
 
   const moyenne = sum / groupeReponses.length;
-  // Score = moyenne × coefficient
-  return Math.round((moyenne * coefficient * 100) / 5) / 100;
+  // Score = moyenne × 20 pour avoir un score sur 100 (moyenne sur 5 points)
+  return Math.round((moyenne * 20 * 100)) / 100;
 }
 
 // Calculer le score IA pour le manager (utilise uniquement noteManager)
@@ -105,8 +105,8 @@ function calculateManagerIAScore(reponses: Reponse[]): number | null {
   }, 0);
 
   const moyenne = sum / iaReponses.length;
-  // Score IA = moyenne × coefficient (même formule que les autres groupes)
-  return Math.round((moyenne * COEFFICIENT_COMPETENCES_IA * 100) / 5) / 100;
+  // Score IA = moyenne × 20 pour avoir un score sur 100 (moyenne sur 5 points)
+  return Math.round((moyenne * 20 * 100)) / 100;
 }
 
 // Calculer les scores manager - retourne null si aucune note manager n'existe
@@ -133,8 +133,8 @@ export function calculateManagerScores(reponses: Reponse[]): ScoreDetail | null 
   const hardSkillsValue = hardSkills ?? 0;
   const performanceProjetValue = performanceProjet ?? 0;
 
-  // Score total = somme des scores par groupe (max 100)
-  const total = Math.min(100, softSkillsValue + hardSkillsValue + performanceProjetValue);
+  // Score total = moyenne simple des trois scores (tous sur 100)
+  const total = Math.round(((softSkillsValue + hardSkillsValue + performanceProjetValue) / 3) * 100) / 100;
 
   // Score IA spécifique
   const competencesIA = calculateManagerIAScore(reponses) ?? 0;

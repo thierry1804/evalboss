@@ -152,6 +152,12 @@ export function Dashboard() {
     { name: 'Compétences IA', value: stats.scoresMoyens.competencesIA },
   ];
 
+  // Calculer les moyennes originales (sur 5) pour affichage avec coefficient
+  const moyenneSoftSkills = stats.scoresMoyens.softSkills / 20;
+  const moyenneHardSkills = stats.scoresMoyens.hardSkills / 20;
+  const moyennePerformanceProjet = stats.scoresMoyens.performanceProjet / 20;
+  const moyenneIA = stats.scoresMoyens.competencesIA / 20;
+
   // Données pour le graphique des scores par profil
   const barDataProfil = Object.entries(stats.scoresParProfil).map(([profil, score]) => ({
     name: PROFIL_LABELS[profil as keyof typeof PROFIL_LABELS] || profil,
@@ -218,24 +224,28 @@ export function Dashboard() {
           <h3 className="text-lg font-semibold mb-4">Scores moyens globaux</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-primary-600">{stats.scoresMoyens.total.toFixed(1)}</div>
+              <div className="text-2xl font-bold text-primary-600">{stats.scoresMoyens.total.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Score Total</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">{stats.scoresMoyens.softSkills.toFixed(1)}</div>
+              <div className="text-2xl font-bold">{stats.scoresMoyens.softSkills.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Soft Skills</div>
+              <div className="text-xs text-gray-500 mt-1">{moyenneSoftSkills.toFixed(1)}/5</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">{stats.scoresMoyens.hardSkills.toFixed(1)}</div>
+              <div className="text-2xl font-bold">{stats.scoresMoyens.hardSkills.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Hard Skills</div>
+              <div className="text-xs text-gray-500 mt-1">{(moyenneHardSkills * 2).toFixed(1)}/10</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">{stats.scoresMoyens.performanceProjet.toFixed(1)}</div>
+              <div className="text-2xl font-bold">{stats.scoresMoyens.performanceProjet.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Performance Projet</div>
+              <div className="text-xs text-gray-500 mt-1">{(moyennePerformanceProjet * 2).toFixed(1)}/10</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-ia-purple">{stats.scoresMoyens.competencesIA.toFixed(1)}</div>
+              <div className="text-2xl font-bold text-ia-purple">{stats.scoresMoyens.competencesIA.toFixed(1)}%</div>
               <div className="text-sm text-gray-600">Compétences IA</div>
+              <div className="text-xs text-gray-500 mt-1">{(moyenneIA * 2).toFixed(1)}/10</div>
             </div>
           </div>
           <BarChartComponent data={barDataScores} title="Répartition des scores moyens" />
@@ -275,7 +285,7 @@ export function Dashboard() {
                         <span className="text-sm font-medium text-gray-700">
                           {PROFIL_LABELS[profil as keyof typeof PROFIL_LABELS] || profil}
                         </span>
-                        <span className="text-sm font-bold text-ia-purple">{score.toFixed(1)} / 100</span>
+                        <span className="text-sm font-bold text-ia-purple">{score.toFixed(1)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
@@ -297,8 +307,8 @@ export function Dashboard() {
             <div>
               <h4 className="font-semibold text-gray-700 mb-2">Tendances</h4>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li>• Score moyen global : <strong>{stats.scoresMoyens.total.toFixed(1)} / 100</strong></li>
-                <li>• Score IA moyen : <strong>{stats.scoresMoyens.competencesIA.toFixed(1)} / 100</strong></li>
+                <li>• Score moyen global : <strong>{stats.scoresMoyens.total.toFixed(1)}%</strong></li>
+                <li>• Score IA moyen : <strong>{stats.scoresMoyens.competencesIA.toFixed(1)}%</strong></li>
                 <li>• Taux de soumission : <strong>{((stats.soumises / stats.totalEvaluations) * 100).toFixed(1)}%</strong></li>
               </ul>
             </div>
