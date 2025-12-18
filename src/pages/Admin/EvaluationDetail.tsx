@@ -8,9 +8,9 @@ import { Textarea } from '../../components/ui/Textarea';
 import { RadarChartComponent } from '../../components/charts/RadarChart';
 import { BarChartComponent } from '../../components/charts/BarChart';
 import { Evaluation, Reponse, ScoreDetail } from '../../types';
-import { PROFIL_LABELS, NIVEAU_IA_LABELS, NOTE_LABELS } from '../../types';
-import { formatDate } from '../../lib/utils';
-import { calculateScores } from '../../lib/scoreCalculator';
+import { PROFIL_LABELS, NIVEAU_IA_LABELS, NOTE_LABELS, GROUPE_LABELS, GroupeQuestion } from '../../types';
+import { formatDate, calculateAnciennete } from '../../lib/utils';
+import { calculateManagerScores, isManagerEvaluationComplete } from '../../lib/scoreCalculator';
 import { Sparkles, ArrowLeft, Save } from 'lucide-react';
 
 export function EvaluationDetail() {
@@ -22,6 +22,7 @@ export function EvaluationDetail() {
   const [managerReponses, setManagerReponses] = useState<Reponse[]>([]);
   const [commentaireManager, setCommentaireManager] = useState('');
   const [scoresManager, setScoresManager] = useState<ScoreDetail | null>(null);
+  const [currentGroupe, setCurrentGroupe] = useState<GroupeQuestion>('soft_skills');
 
   useEffect(() => {
     if (id) {
@@ -31,8 +32,10 @@ export function EvaluationDetail() {
 
   useEffect(() => {
     if (managerReponses.length > 0) {
-      const scores = calculateScores(managerReponses);
+      const scores = calculateManagerScores(managerReponses);
       setScoresManager(scores);
+    } else {
+      setScoresManager(null);
     }
   }, [managerReponses]);
 
@@ -71,13 +74,53 @@ export function EvaluationDetail() {
         };
 
         setEvaluation(evalData);
-        // Initialiser les réponses manager avec les réponses collaborateur
-        setManagerReponses(evalData.reponses.map(r => ({
-          ...r,
-          noteManager: r.noteManager || undefined,
-          commentaireManager: r.commentaireManager || undefined,
-        })));
-        setCommentaireManager(evalData.commentaires?.manager || '');
+        
+        // Charger les données manager depuis evaluations_manager
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: managerEvalData, error: managerEvalError } = await supabase
+            .from('evaluations_manager')
+            .select('*')
+            .eq('evaluation_id', id)
+            .eq('manager_id', user.id)
+            .maybeSingle();
+
+          // Avec maybeSingle(), data sera null si aucune ligne trouvée (pas d'erreur)
+          if (managerEvalData && !managerEvalError) {
+            // Utiliser les réponses manager depuis evaluations_manager
+            const managerReponses = (managerEvalData.reponses_manager as any[]) || [];
+            // Fusionner avec les réponses collaborateur pour avoir toutes les informations
+            const mergedReponses = evalData.reponses.map((r) => {
+              const managerRep = managerReponses.find((mr: any) => mr.id === r.id);
+              return {
+                ...r,
+                noteManager: managerRep?.noteManager !== undefined ? managerRep.noteManager : undefined,
+                commentaireManager: managerRep?.commentaireManager || undefined,
+              };
+            });
+            setManagerReponses(mergedReponses);
+            setCommentaireManager(managerEvalData.commentaire_manager || '');
+            if (managerEvalData.scores_manager) {
+              setScoresManager(managerEvalData.scores_manager as ScoreDetail);
+            }
+          } else {
+            // Sinon, initialiser avec les réponses collaborateur seulement
+            setManagerReponses(evalData.reponses.map(r => ({
+              ...r,
+              noteManager: undefined,
+              commentaireManager: undefined,
+            })));
+            setCommentaireManager(evalData.commentaires?.manager || '');
+          }
+        } else {
+          // Pas de manager connecté, initialiser avec les réponses collaborateur
+          setManagerReponses(evalData.reponses.map(r => ({
+            ...r,
+            noteManager: undefined,
+            commentaireManager: undefined,
+          })));
+          setCommentaireManager(evalData.commentaires?.manager || '');
+        }
       }
     } catch (error: any) {
       console.error('Erreur:', error);
@@ -86,15 +129,15 @@ export function EvaluationDetail() {
     }
   };
 
-  const handleManagerNoteChange = (questionId: string, note: number) => {
+  const handleManagerNoteChange = (reponseId: string, note: number) => {
     setManagerReponses((prev) =>
-      prev.map((r) => (r.questionId === questionId ? { ...r, noteManager: note } : r))
+      prev.map((r) => (r.id === reponseId ? { ...r, noteManager: note } : r))
     );
   };
 
-  const handleManagerCommentaireChange = (questionId: string, commentaire: string) => {
+  const handleManagerCommentaireChange = (reponseId: string, commentaire: string) => {
     setManagerReponses((prev) =>
-      prev.map((r) => (r.questionId === questionId ? { ...r, commentaireManager: commentaire } : r))
+      prev.map((r) => (r.id === reponseId ? { ...r, commentaireManager: commentaire } : r))
     );
   };
 
@@ -103,9 +146,62 @@ export function EvaluationDetail() {
 
     setIsSaving(true);
     try {
-      // Mettre à jour les réponses avec les notes manager
+      // Récupérer l'ID du manager connecté
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Manager non authentifié');
+      }
+
+      // Recalculer les scores manager avant de sauvegarder
+      const calculatedScores = calculateManagerScores(managerReponses);
+
+      // Préparer les réponses manager pour la sauvegarde (nettoyer les propriétés undefined)
+      const cleanedManagerReponses = managerReponses.map((r) => {
+        const cleaned: any = {
+          id: r.id,
+          questionId: r.questionId,
+          groupe: r.groupe,
+          question: r.question,
+          categorieIA: r.categorieIA,
+          noteCollaborateur: r.noteCollaborateur,
+        };
+        if (r.commentaireCollaborateur) cleaned.commentaireCollaborateur = r.commentaireCollaborateur;
+        if (r.noteManager !== undefined) cleaned.noteManager = r.noteManager;
+        if (r.commentaireManager) cleaned.commentaireManager = r.commentaireManager;
+        return cleaned;
+      });
+
+      // Sauvegarder dans evaluations_manager
+      const { error: managerError } = await supabase
+        .from('evaluations_manager')
+        .upsert(
+          {
+            evaluation_id: id,
+            manager_id: user.id,
+            reponses_manager: cleanedManagerReponses,
+            scores_manager: calculatedScores || {},
+            commentaire_manager: commentaireManager || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'evaluation_id,manager_id' }
+        );
+
+      if (managerError) throw managerError;
+
+      // Mettre à jour aussi la table evaluations avec les scores manager et commentaires
+      const updatedScores = {
+        ...evaluation.scores,
+        manager: calculatedScores || undefined,
+      };
+
+      const updatedCommentaires = {
+        ...evaluation.commentaires,
+        manager: commentaireManager || undefined,
+      };
+
+      // Mettre à jour les réponses dans evaluations avec les notes manager
       const updatedReponses = evaluation.reponses.map((r) => {
-        const managerRep = managerReponses.find((mr) => mr.questionId === r.questionId);
+        const managerRep = managerReponses.find((mr) => mr.id === r.id);
         return {
           ...r,
           noteManager: managerRep?.noteManager,
@@ -113,18 +209,7 @@ export function EvaluationDetail() {
         };
       });
 
-      const updatedScores = {
-        ...evaluation.scores,
-        manager: scoresManager || undefined,
-      };
-
-      const updatedCommentaires = {
-        ...evaluation.commentaires,
-        manager: commentaireManager,
-      };
-
-      // Sauvegarder dans evaluations_manager (ou dans evaluations directement selon votre modèle)
-      const { error } = await supabase
+      const { error: evalError } = await supabase
         .from('evaluations')
         .update({
           reponses: updatedReponses,
@@ -134,13 +219,21 @@ export function EvaluationDetail() {
         })
         .eq('id', id);
 
-      if (error) throw error;
+      if (evalError) {
+        // Si l'erreur vient des politiques RLS, on continue quand même car evaluations_manager est sauvegardé
+        console.warn('Erreur lors de la mise à jour de evaluations (peut être normal si RLS bloque):', evalError);
+      }
+
+      // Mettre à jour les scores manager dans le state
+      setScoresManager(calculatedScores);
 
       // Recharger l'évaluation
       await loadEvaluation();
+      
+      alert('Évaluation manager sauvegardée avec succès !');
     } catch (error: any) {
       console.error('Erreur lors de la sauvegarde:', error);
-      alert('Erreur lors de la sauvegarde');
+      alert('Erreur lors de la sauvegarde: ' + (error.message || 'Erreur inconnue'));
     } finally {
       setIsSaving(false);
     }
@@ -203,7 +296,7 @@ export function EvaluationDetail() {
   const ecarts = evaluation.reponses
     .map((r) => {
       const noteAuto = r.noteCollaborateur;
-      const noteMgr = managerReponses.find((mr) => mr.questionId === r.questionId)?.noteManager;
+      const noteMgr = managerReponses.find((mr) => mr.id === r.id)?.noteManager;
       if (noteMgr === undefined) return null;
       const ecart = Math.abs(noteAuto - noteMgr);
       return { reponse: r, ecart, noteAuto, noteMgr };
@@ -228,7 +321,12 @@ export function EvaluationDetail() {
               {PROFIL_LABELS[evaluation.collaborateur.poste]}
             </p>
           </div>
-          <Button variant="primary" onClick={saveManagerEvaluation} isLoading={isSaving}>
+          <Button 
+            variant="primary" 
+            onClick={saveManagerEvaluation} 
+            isLoading={isSaving}
+            disabled={!isManagerEvaluationComplete(managerReponses)}
+          >
             <Save size={16} className="mr-2" />
             Sauvegarder
           </Button>
@@ -236,7 +334,7 @@ export function EvaluationDetail() {
 
         {/* Informations collaborateur */}
         <Card className="mb-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <div>
               <p className="text-sm text-gray-500">Matricule</p>
               <p className="font-medium">{evaluation.collaborateur.matricule}</p>
@@ -250,6 +348,18 @@ export function EvaluationDetail() {
               <p className="font-medium">{formatDate(evaluation.collaborateur.dateIntegration)}</p>
             </div>
             <div>
+              <p className="text-sm text-gray-500">Ancienneté</p>
+              <p className="font-medium">{calculateAnciennete(evaluation.collaborateur.dateIntegration)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Date de soumission</p>
+              <p className="font-medium">
+                {evaluation.timestamps.soumission 
+                  ? formatDate(evaluation.timestamps.soumission)
+                  : 'Non soumise'}
+              </p>
+            </div>
+            <div>
               <p className="text-sm text-gray-500">Statut</p>
               <Badge variant={evaluation.statut === 'validee' ? 'success' : 'info'}>
                 {evaluation.statut}
@@ -258,7 +368,69 @@ export function EvaluationDetail() {
           </div>
         </Card>
 
-        {/* Comparaison graphique */}
+        {/* Scores collaborateur - toujours affichés */}
+        <Card className="mb-6">
+          <h3 className="text-lg font-semibold mb-4">Scores Auto-évaluation</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-primary-600">{scoresAuto.total.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Total</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold">{scoresAuto.softSkills.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Soft Skills</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold">{scoresAuto.hardSkills.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Hard Skills</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold">{scoresAuto.performanceProjet.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Performance</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-ia-purple">{scoresAuto.competencesIA.toFixed(1)}</div>
+              <div className="text-sm text-gray-600">Compétences IA</div>
+              <Badge variant="ia" className="mt-1">
+                {NIVEAU_IA_LABELS[scoresAuto.niveauIA]}
+              </Badge>
+            </div>
+          </div>
+        </Card>
+
+        {/* Scores manager - affichés seulement si le manager a donné des notes */}
+        {scoresMgr && (
+          <Card className="mb-6">
+            <h3 className="text-lg font-semibold mb-4">Scores Manager</h3>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-primary-600">{scoresMgr.total.toFixed(1)}</div>
+                <div className="text-sm text-gray-600">Total</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{scoresMgr.softSkills.toFixed(1)}</div>
+                <div className="text-sm text-gray-600">Soft Skills</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{scoresMgr.hardSkills.toFixed(1)}</div>
+                <div className="text-sm text-gray-600">Hard Skills</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{scoresMgr.performanceProjet.toFixed(1)}</div>
+                <div className="text-sm text-gray-600">Performance</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-ia-purple">{scoresMgr.competencesIA.toFixed(1)}</div>
+                <div className="text-sm text-gray-600">Compétences IA</div>
+                <Badge variant="ia" className="mt-1">
+                  {NIVEAU_IA_LABELS[scoresMgr.niveauIA]}
+                </Badge>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Comparaison graphique - affichée seulement si le manager a donné des notes */}
         {scoresMgr && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <Card>
@@ -289,6 +461,9 @@ export function EvaluationDetail() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Groupe
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Question
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -305,6 +480,9 @@ export function EvaluationDetail() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {ecarts.slice(0, 10).map((ecart, index) => (
                     <tr key={index}>
+                      <td className="px-4 py-3 text-sm text-gray-700 font-medium">
+                        {ecart?.reponse.groupe ? GROUPE_LABELS[ecart.reponse.groupe] : '-'}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {ecart?.reponse.question}
                       </td>
@@ -321,69 +499,95 @@ export function EvaluationDetail() {
           </Card>
         )}
 
-        {/* Questions avec saisie manager */}
+        {/* Questions avec saisie manager - Par onglets */}
         <Card className="mb-6">
-          <h3 className="text-lg font-semibold mb-4">Évaluation Manager</h3>
-          <div className="space-y-6">
-            {managerReponses.map((reponse) => (
-              <div key={reponse.id} className="border-b pb-6 last:border-b-0">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h4 className="font-medium text-gray-900 mb-2">{reponse.question}</h4>
-                    {reponse.categorieIA && (
-                      <Badge variant="ia" className="mb-2">
-                        <Sparkles size={14} className="mr-1" />
-                        IA
-                      </Badge>
-                    )}
-                    <div className="mt-2 text-sm text-gray-600">
-                      <strong>Auto-évaluation:</strong> Note {reponse.noteCollaborateur} -{' '}
-                      {NOTE_LABELS[reponse.noteCollaborateur]}
-                      {reponse.commentaireCollaborateur && (
-                        <div className="mt-1 italic">"{reponse.commentaireCollaborateur}"</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="ml-6 space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Votre note (1-5)
-                    </label>
-                    <div className="flex gap-2">
-                      {[1, 2, 3, 4, 5].map((note) => (
-                        <button
-                          key={note}
-                          type="button"
-                          onClick={() => handleManagerNoteChange(reponse.questionId, note)}
-                          className={`
-                            px-4 py-2 rounded-lg font-medium transition-colors
-                            ${
-                              reponse.noteManager === note
-                                ? 'bg-primary-600 text-white'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }
-                          `}
-                        >
-                          {note}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <Textarea
-                    label="Votre commentaire (optionnel)"
-                    value={reponse.commentaireManager || ''}
-                    onChange={(e) =>
-                      handleManagerCommentaireChange(reponse.questionId, e.target.value)
-                    }
-                    maxLength={500}
-                    rows={2}
-                  />
-                </div>
-              </div>
+          <h3 className="text-lg font-semibold mb-6">Évaluation Manager</h3>
+          
+          {/* Onglets pour les rubriques */}
+          <div className="flex gap-2 mb-6">
+            {(['soft_skills', 'hard_skills', 'performance_projet'] as GroupeQuestion[]).map((groupe) => (
+              <button
+                key={groupe}
+                onClick={() => {
+                  setCurrentGroupe(groupe);
+                }}
+                className={`
+                  flex-1 py-2 px-4 rounded-lg font-medium transition-colors
+                  ${
+                    groupe === currentGroupe
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }
+                `}
+              >
+                {GROUPE_LABELS[groupe]}
+              </button>
             ))}
+          </div>
+
+          {/* Questions du groupe actif */}
+          <div className="space-y-6">
+            {managerReponses
+              .filter((r) => r.groupe === currentGroupe)
+              .map((reponse) => (
+                <div key={reponse.id} className="border-b pb-6 last:border-b-0">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-gray-900 mb-2">{reponse.question}</h4>
+                      {reponse.categorieIA && (
+                        <Badge variant="ia" className="mb-2">
+                          <Sparkles size={14} className="mr-1" />
+                          IA
+                        </Badge>
+                      )}
+                      <div className="mt-2 text-sm text-gray-600">
+                        <strong>Auto-évaluation:</strong> Note {reponse.noteCollaborateur} -{' '}
+                        {NOTE_LABELS[reponse.noteCollaborateur]}
+                        {reponse.commentaireCollaborateur && (
+                          <div className="mt-1 italic">"{reponse.commentaireCollaborateur}"</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="ml-6 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Votre note (1-5)
+                      </label>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((note) => (
+                          <button
+                            key={note}
+                            type="button"
+                            onClick={() => handleManagerNoteChange(reponse.id, note)}
+                            className={`
+                              px-4 py-2 rounded-lg font-medium transition-colors
+                              ${
+                                reponse.noteManager === note
+                                  ? 'bg-primary-600 text-white'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }
+                            `}
+                          >
+                            {note}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Textarea
+                      label="Votre commentaire (optionnel)"
+                      value={reponse.commentaireManager || ''}
+                      onChange={(e) =>
+                        handleManagerCommentaireChange(reponse.id, e.target.value)
+                      }
+                      maxLength={500}
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              ))}
           </div>
         </Card>
 
@@ -400,37 +604,6 @@ export function EvaluationDetail() {
           />
         </Card>
 
-        {/* Scores calculés */}
-        {scoresMgr && (
-          <Card>
-            <h3 className="text-lg font-semibold mb-4">Scores Manager</h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary-600">{scoresMgr.total.toFixed(1)}</div>
-                <div className="text-sm text-gray-600">Total</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">{scoresMgr.softSkills.toFixed(1)}</div>
-                <div className="text-sm text-gray-600">Soft Skills</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">{scoresMgr.hardSkills.toFixed(1)}</div>
-                <div className="text-sm text-gray-600">Hard Skills</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">{scoresMgr.performanceProjet.toFixed(1)}</div>
-                <div className="text-sm text-gray-600">Performance</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-ia-purple">{scoresMgr.competencesIA.toFixed(1)}</div>
-                <div className="text-sm text-gray-600">Compétences IA</div>
-                <Badge variant="ia" className="mt-1">
-                  {NIVEAU_IA_LABELS[scoresMgr.niveauIA]}
-                </Badge>
-              </div>
-            </div>
-          </Card>
-        )}
       </div>
     </div>
   );

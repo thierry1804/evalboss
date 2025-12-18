@@ -32,6 +32,30 @@ export function monthsDiff(date1: Date, date2: Date): number {
   return months - date1.getMonth() + date2.getMonth();
 }
 
+// Fonction pour calculer l'ancienneté (en années et mois)
+export function calculateAnciennete(dateIntegration: Date | string): string {
+  const dateInt = typeof dateIntegration === 'string' ? new Date(dateIntegration) : dateIntegration;
+  const today = new Date();
+  const totalMonths = monthsDiff(dateInt, today);
+  
+  const years = Math.floor(totalMonths / 12);
+  const months = totalMonths % 12;
+  
+  if (years === 0 && months === 0) {
+    return 'Moins d\'un mois';
+  }
+  
+  if (years === 0) {
+    return `${months} ${months === 1 ? 'mois' : 'mois'}`;
+  }
+  
+  if (months === 0) {
+    return `${years} ${years === 1 ? 'an' : 'ans'}`;
+  }
+  
+  return `${years} ${years === 1 ? 'an' : 'ans'} et ${months} ${months === 1 ? 'mois' : 'mois'}`;
+}
+
 // Fonction pour générer un UUID v4
 export function generateId(): string {
   // Utiliser crypto.randomUUID() si disponible (navigateurs modernes)
