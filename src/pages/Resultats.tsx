@@ -304,9 +304,12 @@ export function Resultats() {
 
         {/* Actions */}
         <div className="flex justify-between items-center">
-          <Button variant="ghost" onClick={() => navigate(`/questionnaire/${currentEvaluation.id}`)}>
-            ← Retour au questionnaire
-          </Button>
+          {!isSubmitted && (
+            <Button variant="ghost" onClick={() => navigate(`/questionnaire/${currentEvaluation.id}`)}>
+              ← Retour au questionnaire
+            </Button>
+          )}
+          {isSubmitted && <div />}
           <div className="flex gap-3">
             <Button
               variant="outline"

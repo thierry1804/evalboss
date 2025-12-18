@@ -42,12 +42,14 @@ export function Questionnaire() {
   }
 
   const groupes: GroupeQuestion[] = ['soft_skills', 'hard_skills', 'performance_projet'];
+  const isSubmitted = currentEvaluation.statut === 'soumise' || currentEvaluation.statut === 'validee';
 
   const questionsDuGroupe = currentEvaluation.reponses.filter(
     (r) => r.groupe === currentGroupe
   );
 
   const handleNoteChange = (reponseId: string, note: number) => {
+    if (isSubmitted) return;
     const reponse = currentEvaluation.reponses.find((r) => r.id === reponseId);
     if (reponse) {
       saveReponse(reponse.questionId, note, undefined, reponseId);
@@ -55,6 +57,7 @@ export function Questionnaire() {
   };
 
   const handleCommentaireChange = (reponseId: string, commentaire: string) => {
+    if (isSubmitted) return;
     const reponse = currentEvaluation.reponses.find((r) => r.id === reponseId);
     if (reponse) {
       saveReponse(reponse.questionId, reponse.noteCollaborateur, commentaire, reponseId);
@@ -89,6 +92,11 @@ export function Questionnaire() {
               {currentEvaluation.collaborateur.prenom} {currentEvaluation.collaborateur.nom} -{' '}
               {currentEvaluation.collaborateur.poste}
             </p>
+            {isSubmitted && (
+              <div className="mt-2 bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-2 rounded-lg text-sm">
+                ⚠️ Cette évaluation a été soumise et ne peut plus être modifiée.
+              </div>
+            )}
           </div>
 
           <ProgressBar reponses={currentEvaluation.reponses} />
@@ -127,6 +135,7 @@ export function Questionnaire() {
               onCommentaireChange={(commentaire) =>
                 handleCommentaireChange(reponse.id, commentaire)
               }
+              disabled={isSubmitted}
             />
           ))}
         </div>
@@ -172,9 +181,11 @@ export function Questionnaire() {
           </div>
         )}
 
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>Vos réponses sont sauvegardées automatiquement toutes les 30 secondes.</p>
-        </div>
+        {!isSubmitted && (
+          <div className="mt-6 text-center text-sm text-gray-500">
+            <p>Vos réponses sont sauvegardées automatiquement toutes les 30 secondes.</p>
+          </div>
+        )}
       </div>
     </div>
   );

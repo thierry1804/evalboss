@@ -183,6 +183,11 @@ export const useEvaluationStore = create<EvaluationState>((set, get) => ({
     const state = get();
     if (!state.currentEvaluation) return;
 
+    // Empêcher les modifications si l'évaluation est soumise ou validée
+    if (state.currentEvaluation.statut !== 'brouillon') {
+      return;
+    }
+
     // Utiliser reponseId si fourni (plus sûr), sinon trouver par questionId
     let reponseToUpdate;
     if (reponseId) {
@@ -218,6 +223,11 @@ export const useEvaluationStore = create<EvaluationState>((set, get) => ({
   saveCommentaireFinal: (commentaire: string) => {
     const state = get();
     if (!state.currentEvaluation) return;
+
+    // Empêcher les modifications si l'évaluation est soumise ou validée
+    if (state.currentEvaluation.statut !== 'brouillon') {
+      return;
+    }
 
     set({
       currentEvaluation: {

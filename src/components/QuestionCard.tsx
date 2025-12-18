@@ -10,9 +10,10 @@ interface QuestionCardProps {
   reponse: Reponse;
   onNoteChange: (note: number) => void;
   onCommentaireChange: (commentaire: string) => void;
+  disabled?: boolean;
 }
 
-export function QuestionCard({ reponse, onNoteChange, onCommentaireChange }: QuestionCardProps) {
+export function QuestionCard({ reponse, onNoteChange, onCommentaireChange, disabled = false }: QuestionCardProps) {
   const notes = [1, 2, 3, 4, 5];
 
   return (
@@ -39,7 +40,8 @@ export function QuestionCard({ reponse, onNoteChange, onCommentaireChange }: Que
               <Tooltip key={note} content={NOTE_LABELS[note]} position="top">
                 <button
                   type="button"
-                  onClick={() => onNoteChange(note)}
+                  onClick={() => !disabled && onNoteChange(note)}
+                  disabled={disabled}
                   className={`
                     px-4 py-2 rounded-lg font-medium transition-colors
                     ${
@@ -47,6 +49,7 @@ export function QuestionCard({ reponse, onNoteChange, onCommentaireChange }: Que
                         ? 'bg-primary-600 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }
+                    ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >
                   {note}
@@ -59,7 +62,8 @@ export function QuestionCard({ reponse, onNoteChange, onCommentaireChange }: Que
         <Textarea
           label="Commentaire (optionnel)"
           value={reponse.commentaireCollaborateur || ''}
-          onChange={(e) => onCommentaireChange(e.target.value)}
+          onChange={(e) => !disabled && onCommentaireChange(e.target.value)}
+          disabled={disabled}
           maxLength={500}
           showCharCount
           placeholder="Ajoutez un commentaire pour expliquer votre note..."
