@@ -1,10 +1,10 @@
 import jsPDF from 'jspdf';
-import { Evaluation, ScoreDetail } from '../types';
+import { Evaluation, ScoreDetail, AnalyseGemini } from '../types';
 import { formatDate } from './utils';
 import { PROFIL_LABELS, NIVEAU_IA_LABELS, GROUPE_LABELS, NOTE_LABELS } from '../types';
-import { generateRecommendations, generateAnalyseCompetences } from './recommendations';
+import { generateRecommendations, generateAnalyseCompetencesDefault, AnalyseCompetences } from './recommendations';
 
-export function exportEvaluationToPDF(evaluation: Evaluation) {
+export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: AnalyseCompetences) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -24,6 +24,28 @@ export function exportEvaluationToPDF(evaluation: Evaluation) {
       return true;
     }
     return false;
+  };
+
+  // Fonction pour afficher du texte avec gestion des retours à la ligne
+  const addTextWithLineBreaks = (text: string, x: number, maxWidth: number, lineHeight: number = 7) => {
+    // Diviser le texte par les retours à la ligne explicites
+    const paragraphs = text.split('\n');
+    
+    paragraphs.forEach((paragraph, index) => {
+      // Si le paragraphe est vide (double retour à la ligne), ajouter un espace
+      if (paragraph.trim() === '' && index > 0) {
+        yPosition += lineHeight * 0.5;
+        return;
+      }
+      
+      // Utiliser splitTextToSize pour gérer les lignes trop longues
+      const lines = doc.splitTextToSize(paragraph.trim(), maxWidth);
+      lines.forEach((line: string) => {
+        checkPageBreak(lineHeight);
+        doc.text(line, x, yPosition);
+        yPosition += lineHeight;
+      });
+    });
   };
 
   // En-tête
@@ -46,9 +68,26 @@ export function exportEvaluationToPDF(evaluation: Evaluation) {
 
   const scores = evaluation.scores.autoEvaluation;
 
-  // Générer les recommandations et l'analyse
+  // Générer les recommandations
   const recommandations = generateRecommendations(evaluation.collaborateur.poste, scores);
-  const analyse = generateAnalyseCompetences(scores);
+  
+  // Utiliser l'analyse fournie en paramètre, ou celle sauvegardée, ou l'analyse par défaut
+  let analyseData: AnalyseCompetences;
+  if (analyse) {
+    // Utiliser l'analyse passée en paramètre (depuis l'état de la page)
+    analyseData = analyse;
+  } else if (evaluation.analyseGemini) {
+    // Utiliser l'analyse Gemini sauvegardée
+    analyseData = {
+      pointsForts: evaluation.analyseGemini.pointsForts,
+      axesAmelioration: evaluation.analyseGemini.axesAmelioration,
+      recommandationsPrioritaires: evaluation.analyseGemini.recommandationsPrioritaires,
+      analyseDetaillee: evaluation.analyseGemini.analyseDetaillee,
+    };
+  } else {
+    // Utiliser l'analyse par défaut (sans appeler Gemini)
+    analyseData = generateAnalyseCompetencesDefault(scores);
+  }
 
   // Calculer les moyennes originales
   const moyenneSoftSkills = scores.softSkills / 20;
@@ -140,46 +179,71 @@ export function exportEvaluationToPDF(evaluation: Evaluation) {
   doc.setFont('helvetica', 'normal');
 
   // Points forts
-  if (analyse.pointsForts.length > 0) {
+  if (analyseData.pointsForts.length > 0) {
     doc.setFont('helvetica', 'bold');
     doc.text('Points forts :', margin, yPosition);
     yPosition += 7;
     doc.setFont('helvetica', 'normal');
-    analyse.pointsForts.forEach((point) => {
-      checkPageBreak(7);
-      doc.text(`• ${point}`, margin + 5, yPosition);
-      yPosition += 7;
+    analyseData.pointsForts.forEach((point) => {
+      // Gérer les retours à la ligne dans chaque point
+      const pointLines = doc.splitTextToSize(`• ${point}`, pageWidth - 2 * margin - 5);
+      pointLines.forEach((line: string, lineIndex: number) => {
+        checkPageBreak(7);
+        doc.text(line, margin + 5, yPosition);
+        yPosition += 7;
+      });
     });
     yPosition += 3;
   }
 
   // Axes d'amélioration
-  if (analyse.axesAmelioration.length > 0) {
+  if (analyseData.axesAmelioration.length > 0) {
     checkPageBreak(15);
     doc.setFont('helvetica', 'bold');
     doc.text('Axes d\'amélioration :', margin, yPosition);
     yPosition += 7;
     doc.setFont('helvetica', 'normal');
-    analyse.axesAmelioration.forEach((axe) => {
-      checkPageBreak(7);
-      doc.text(`• ${axe}`, margin + 5, yPosition);
-      yPosition += 7;
+    analyseData.axesAmelioration.forEach((axe) => {
+      // Gérer les retours à la ligne dans chaque axe
+      const axeLines = doc.splitTextToSize(`• ${axe}`, pageWidth - 2 * margin - 5);
+      axeLines.forEach((line: string) => {
+        checkPageBreak(7);
+        doc.text(line, margin + 5, yPosition);
+        yPosition += 7;
+      });
     });
     yPosition += 3;
   }
 
   // Recommandations prioritaires
-  if (analyse.recommandationsPrioritaires.length > 0) {
+  if (analyseData.recommandationsPrioritaires.length > 0) {
     checkPageBreak(20);
     doc.setFont('helvetica', 'bold');
     doc.text('Recommandations prioritaires :', margin, yPosition);
     yPosition += 7;
     doc.setFont('helvetica', 'normal');
-    analyse.recommandationsPrioritaires.forEach((rec, index) => {
-      checkPageBreak(7);
-      doc.text(`${index + 1}. ${rec}`, margin + 5, yPosition);
-      yPosition += 7;
+    analyseData.recommandationsPrioritaires.forEach((rec, index) => {
+      // Gérer les retours à la ligne dans chaque recommandation
+      const recLines = doc.splitTextToSize(`${index + 1}. ${rec}`, pageWidth - 2 * margin - 5);
+      recLines.forEach((line: string) => {
+        checkPageBreak(7);
+        doc.text(line, margin + 5, yPosition);
+        yPosition += 7;
+      });
     });
+  }
+  
+  // Analyse détaillée si disponible
+  if (analyseData.analyseDetaillee) {
+    checkPageBreak(30);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Analyse détaillée', margin, yPosition);
+    yPosition += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    addTextWithLineBreaks(analyseData.analyseDetaillee, margin, pageWidth - 2 * margin, 7);
+    yPosition += 5;
   }
 
   yPosition += 10;
@@ -197,12 +261,7 @@ export function exportEvaluationToPDF(evaluation: Evaluation) {
   doc.setFont('helvetica', 'normal');
   doc.text(`Recommandation : ${recommandations.titre}`, margin, yPosition);
   yPosition += 7;
-  const descLines = doc.splitTextToSize(recommandations.description, pageWidth - 2 * margin);
-  descLines.forEach((line: string) => {
-    checkPageBreak(7);
-    doc.text(line, margin, yPosition);
-    yPosition += 7;
-  });
+  addTextWithLineBreaks(recommandations.description, margin, pageWidth - 2 * margin, 7);
   yPosition += 5;
 
   // Outils IA recommandés
@@ -289,11 +348,10 @@ export function exportEvaluationToPDF(evaluation: Evaluation) {
         doc.setFontSize(8);
         doc.setTextColor(...grayColor);
         doc.setFont('helvetica', 'italic');
-        const commentLines = doc.splitTextToSize(
-          `"${reponse.commentaireCollaborateur}"`,
-          pageWidth - 2 * margin - 15
-        );
+        const commentText = `"${reponse.commentaireCollaborateur}"`;
+        const commentLines = doc.splitTextToSize(commentText, pageWidth - 2 * margin - 15);
         commentLines.forEach((line: string) => {
+          checkPageBreak(5);
           doc.text(line, margin + 10, yPosition);
           yPosition += 5;
         });

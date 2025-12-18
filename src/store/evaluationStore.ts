@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Evaluation, Collaborateur, Reponse, QuestionForm, ScoreDetail } from '../types';
+import { Evaluation, Collaborateur, Reponse, QuestionForm, ScoreDetail, AnalyseGemini } from '../types';
 import { calculateScores } from '../lib/scoreCalculator';
 import { generateId } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -19,6 +19,7 @@ interface EvaluationState {
   calculateAndUpdateScores: () => void;
   submitEvaluation: () => Promise<boolean>;
   saveDraft: () => Promise<boolean>;
+  saveAnalyseGemini: (analyse: AnalyseGemini) => Promise<boolean>;
   resetEvaluation: () => void;
 }
 
@@ -156,6 +157,12 @@ export const useEvaluationStore = create<EvaluationState>((set, get) => ({
             manager: (data.scores as any)?.manager,
           },
           commentaires: (data.commentaires as any) || {},
+          analyseGemini: data.analyse_ia 
+            ? {
+                ...(data.analyse_ia as any),
+                dateGeneration: new Date((data.analyse_ia as any).dateGeneration),
+              }
+            : undefined,
           statut: data.statut as any,
           timestamps: {
             creation: new Date(data.created_at),
@@ -344,6 +351,40 @@ export const useEvaluationStore = create<EvaluationState>((set, get) => ({
     } catch (error: any) {
       console.error('Erreur lors de la soumission:', error);
       set({ error: error.message || 'Erreur lors de la soumission' });
+      return false;
+    }
+  },
+
+  saveAnalyseGemini: async (analyse: AnalyseGemini) => {
+    const state = get();
+    if (!state.currentEvaluation) return false;
+
+    try {
+      // Mettre à jour l'évaluation locale
+      const updatedEvaluation: Evaluation = {
+        ...state.currentEvaluation,
+        analyseGemini: analyse,
+      };
+
+      set({ currentEvaluation: updatedEvaluation });
+
+      // Sauvegarder dans Supabase
+      const { error } = await supabase
+        .from('evaluations')
+        .update({
+          analyse_ia: {
+            ...analyse,
+            dateGeneration: analyse.dateGeneration.toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', state.currentEvaluation.id);
+
+      if (error) throw error;
+      return true;
+    } catch (error: any) {
+      console.error('Erreur lors de la sauvegarde de l\'analyse Gemini:', error);
+      set({ error: error.message || 'Erreur lors de la sauvegarde de l\'analyse' });
       return false;
     }
   },

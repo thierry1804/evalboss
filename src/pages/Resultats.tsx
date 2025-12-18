@@ -8,7 +8,7 @@ import { Modal } from '../components/ui/Modal';
 import { Textarea } from '../components/ui/Textarea';
 import { RadarChartComponent } from '../components/charts/RadarChart';
 import { BarChartComponent } from '../components/charts/BarChart';
-import { generateRecommendations, generateAnalyseCompetences } from '../lib/recommendations';
+import { generateRecommendations, generateAnalyseCompetences, generateRecommendationsWithGemini, AnalyseCompetences } from '../lib/recommendations';
 import { NIVEAU_IA_LABELS, PROFIL_LABELS } from '../types';
 import { formatDate } from '../lib/utils';
 import { exportEvaluationToPDF } from '../lib/pdfExport';
@@ -22,11 +22,15 @@ export function Resultats() {
   const loadEvaluation = useEvaluationStore((state) => state.loadEvaluation);
   const saveCommentaireFinal = useEvaluationStore((state) => state.saveCommentaireFinal);
   const submitEvaluation = useEvaluationStore((state) => state.submitEvaluation);
+  const saveAnalyseGemini = useEvaluationStore((state) => state.saveAnalyseGemini);
   const isLoading = useEvaluationStore((state) => state.isLoading);
 
   const [commentaireFinal, setCommentaireFinal] = useState('');
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [analyse, setAnalyse] = useState<AnalyseCompetences | null>(null);
+  const [planProgression, setPlanProgression] = useState<string[]>([]);
+  const [isLoadingAnalyse, setIsLoadingAnalyse] = useState(false);
 
   useEffect(() => {
     if (evaluationId && !currentEvaluation) {
@@ -36,6 +40,94 @@ export function Resultats() {
       setCommentaireFinal(currentEvaluation.commentaires.collaborateur);
     }
   }, [evaluationId, currentEvaluation, loadEvaluation]);
+
+  // Charger l'analyse Gemini lorsque l'évaluation est disponible
+  useEffect(() => {
+    if (currentEvaluation) {
+      const scores = currentEvaluation.scores.autoEvaluation;
+      
+      // Vérifier si l'analyse Gemini existe déjà
+      if (currentEvaluation.analyseGemini) {
+        console.log('Analyse Gemini existante trouvée, utilisation de l\'analyse sauvegardée');
+        // Utiliser l'analyse existante
+        const existingAnalyse = currentEvaluation.analyseGemini;
+        setAnalyse({
+          pointsForts: existingAnalyse.pointsForts,
+          axesAmelioration: existingAnalyse.axesAmelioration,
+          recommandationsPrioritaires: existingAnalyse.recommandationsPrioritaires,
+          analyseDetaillee: existingAnalyse.analyseDetaillee,
+        });
+        setPlanProgression(existingAnalyse.planProgression);
+        setIsLoadingAnalyse(false);
+      } else {
+        // Générer une nouvelle analyse
+        console.log('Aucune analyse Gemini trouvée, génération d\'une nouvelle analyse...');
+        setIsLoadingAnalyse(true);
+        
+        Promise.all([
+          generateAnalyseCompetences(currentEvaluation, scores),
+          generateRecommendationsWithGemini(currentEvaluation, scores),
+        ])
+          .then(async ([analyseResult, { planProgression: plan }]) => {
+            console.log('Analyse générée:', { 
+              hasDetaillee: !!analyseResult.analyseDetaillee,
+              pointsForts: analyseResult.pointsForts.length,
+              axesAmelioration: analyseResult.axesAmelioration.length,
+            });
+            
+            setAnalyse(analyseResult);
+            setPlanProgression(plan);
+            
+            // Si l'analyse contient des données Gemini (analyseDetaillee), sauvegarder
+            if (analyseResult.analyseDetaillee) {
+              console.log('Sauvegarde de l\'analyse Gemini...');
+              const analyseGemini = {
+                pointsForts: analyseResult.pointsForts,
+                axesAmelioration: analyseResult.axesAmelioration,
+                recommandationsPrioritaires: analyseResult.recommandationsPrioritaires,
+                planProgression: plan,
+                analyseDetaillee: analyseResult.analyseDetaillee,
+                dateGeneration: new Date(),
+              };
+              const saved = await saveAnalyseGemini(analyseGemini);
+              if (saved) {
+                console.log('Analyse Gemini sauvegardée avec succès');
+              } else {
+                console.error('Échec de la sauvegarde de l\'analyse Gemini');
+              }
+            } else {
+              console.warn('L\'analyse générée ne contient pas d\'analyseDetaillee, elle ne sera pas sauvegardée');
+            }
+          })
+          .catch((error) => {
+            console.error('Erreur lors du chargement de l\'analyse:', error);
+            // Fallback vers l'analyse par défaut
+            generateAnalyseCompetences(currentEvaluation, scores)
+              .then((defaultAnalyse) => {
+                console.log('Utilisation de l\'analyse par défaut');
+                setAnalyse(defaultAnalyse);
+              })
+              .catch((err) => {
+                console.error('Erreur lors de la génération de l\'analyse par défaut:', err);
+                // En cas d'erreur, utiliser une analyse vide
+                setAnalyse({
+                  pointsForts: [],
+                  axesAmelioration: [],
+                  recommandationsPrioritaires: [],
+                });
+              });
+            const recommandations = generateRecommendations(
+              currentEvaluation.collaborateur.poste,
+              scores
+            );
+            setPlanProgression(recommandations.planProgression);
+          })
+          .finally(() => {
+            setIsLoadingAnalyse(false);
+          });
+      }
+    }
+  }, [currentEvaluation, saveAnalyseGemini]);
 
   if (isLoading || !currentEvaluation) {
     return (
@@ -53,7 +145,13 @@ export function Resultats() {
     currentEvaluation.collaborateur.poste,
     scores
   );
-  const analyse = generateAnalyseCompetences(scores);
+  
+  // Utiliser l'analyse chargée ou une analyse par défaut
+  const analyseData = analyse || {
+    pointsForts: [],
+    axesAmelioration: [],
+    recommandationsPrioritaires: [],
+  };
 
   // Calculer les moyennes originales (sur 5) pour affichage avec coefficient
   const moyenneSoftSkills = scores.softSkills / 20;
@@ -190,9 +288,14 @@ export function Resultats() {
               <CheckCircle className="text-green-600" size={20} />
               Points forts
             </h3>
-            {analyse.pointsForts.length > 0 ? (
+            {isLoadingAnalyse ? (
+              <div className="flex items-center gap-2 text-gray-500">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
+                <span>Analyse en cours...</span>
+              </div>
+            ) : analyseData.pointsForts.length > 0 ? (
               <ul className="space-y-2">
-                {analyse.pointsForts.map((point, index) => (
+                {analyseData.pointsForts.map((point, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <span className="text-green-600 mt-1">✓</span>
                     <span className="text-gray-700">{point}</span>
@@ -209,9 +312,14 @@ export function Resultats() {
               <AlertCircle className="text-yellow-600" size={20} />
               Axes d'amélioration
             </h3>
-            {analyse.axesAmelioration.length > 0 ? (
+            {isLoadingAnalyse ? (
+              <div className="flex items-center gap-2 text-gray-500">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
+                <span>Analyse en cours...</span>
+              </div>
+            ) : analyseData.axesAmelioration.length > 0 ? (
               <ul className="space-y-2">
-                {analyse.axesAmelioration.map((axe, index) => (
+                {analyseData.axesAmelioration.map((axe, index) => (
                   <li key={index} className="flex items-start gap-2">
                     <span className="text-yellow-600 mt-1">→</span>
                     <span className="text-gray-700">{axe}</span>
@@ -256,17 +364,34 @@ export function Resultats() {
 
           <div className="mt-6">
             <h4 className="font-semibold text-gray-700 mb-3">Plan de progression (6-12 mois)</h4>
-            <ol className="space-y-2">
-              {recommandations.planProgression.map((etape, index) => (
+            {isLoadingAnalyse ? (
+              <div className="flex items-center gap-2 text-gray-500 py-4">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
+                <span>Génération du plan en cours...</span>
+              </div>
+            ) : (
+              <ol className="space-y-2">
+                {(planProgression.length > 0 ? planProgression : recommandations.planProgression).map((etape, index) => (
                 <li key={index} className="flex items-start gap-3">
                   <span className="flex-shrink-0 w-6 h-6 bg-ia-purple text-white rounded-full flex items-center justify-center text-sm font-medium">
                     {index + 1}
                   </span>
                   <span className="text-gray-700">{etape}</span>
                 </li>
-              ))}
-            </ol>
+                ))}
+              </ol>
+            )}
           </div>
+          
+          {/* Analyse détaillée */}
+          {analyseData.analyseDetaillee && (
+            <div className="mt-6 p-4 bg-white rounded-lg border border-gray-200">
+              <h4 className="font-semibold text-gray-700 mb-3">Analyse détaillée</h4>
+              <p className="text-gray-600 whitespace-pre-line leading-relaxed">
+                {analyseData.analyseDetaillee}
+              </p>
+            </div>
+          )}
         </Card>
 
         {/* Recommandations prioritaires */}
@@ -275,16 +400,23 @@ export function Resultats() {
             <TrendingUp className="text-primary-600" size={20} />
             Recommandations prioritaires
           </h3>
-          <ul className="space-y-3">
-            {analyse.recommandationsPrioritaires.map((rec, index) => (
+          {isLoadingAnalyse ? (
+            <div className="flex items-center gap-2 text-gray-500 py-4">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600" />
+              <span>Analyse en cours...</span>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {analyseData.recommandationsPrioritaires.map((rec, index) => (
               <li key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                 <span className="flex-shrink-0 w-6 h-6 bg-primary-600 text-white rounded-full flex items-center justify-center text-sm font-medium">
                   {index + 1}
                 </span>
                 <span className="text-gray-700">{rec}</span>
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          )}
         </Card>
 
         {/* Commentaire final */}
@@ -310,7 +442,15 @@ export function Resultats() {
           <div className="flex gap-3">
             <Button
               variant="outline"
-              onClick={() => exportEvaluationToPDF(currentEvaluation)}
+              onClick={async () => {
+                try {
+                  // Passer l'analyse déjà chargée pour éviter de la régénérer
+                  await exportEvaluationToPDF(currentEvaluation, analyse || undefined);
+                } catch (error) {
+                  console.error('Erreur lors de l\'export PDF:', error);
+                  alert('Erreur lors de l\'export PDF. Veuillez réessayer.');
+                }
+              }}
             >
               <Download size={16} className="mr-2" />
               Exporter en PDF

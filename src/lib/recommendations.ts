@@ -1,4 +1,5 @@
-import { ProfilType, NiveauIA, ScoreDetail } from '../types';
+import { ProfilType, NiveauIA, ScoreDetail, Evaluation } from '../types';
+import { generateGeminiAnalyse, GeminiAnalyse } from './gemini';
 
 export interface RecommandationIA {
   titre: string;
@@ -171,14 +172,62 @@ export function generateRecommendations(
   };
 }
 
+/**
+ * Génère des recommandations avec plan de progression, en utilisant Gemini si disponible
+ */
+export async function generateRecommendationsWithGemini(
+  evaluation: Evaluation,
+  scores: ScoreDetail
+): Promise<{ recommandations: RecommandationIA; planProgression: string[] }> {
+  // Essayer d'utiliser Gemini pour le plan de progression
+  const geminiAnalyse = await generateGeminiAnalyse(evaluation, scores);
+  
+  const recommandations = generateRecommendations(evaluation.collaborateur.poste, scores);
+  
+  // Utiliser le plan de progression de Gemini s'il est disponible, sinon utiliser le plan par défaut
+  const planProgression = geminiAnalyse?.planProgression || recommandations.planProgression;
+
+  return {
+    recommandations,
+    planProgression,
+  };
+}
+
 // Générer une analyse des points forts et axes d'amélioration
 export interface AnalyseCompetences {
   pointsForts: string[];
   axesAmelioration: string[];
   recommandationsPrioritaires: string[];
+  analyseDetaillee?: string; // Analyse détaillée générée par Gemini
 }
 
-export function generateAnalyseCompetences(scores: ScoreDetail): AnalyseCompetences {
+/**
+ * Génère une analyse des compétences, en utilisant Gemini si disponible
+ */
+export async function generateAnalyseCompetences(
+  evaluation: Evaluation,
+  scores: ScoreDetail
+): Promise<AnalyseCompetences> {
+  // Essayer d'utiliser Gemini en premier
+  const geminiAnalyse = await generateGeminiAnalyse(evaluation, scores);
+  
+  if (geminiAnalyse) {
+    return {
+      pointsForts: geminiAnalyse.pointsForts,
+      axesAmelioration: geminiAnalyse.axesAmelioration,
+      recommandationsPrioritaires: geminiAnalyse.recommandationsPrioritaires,
+      analyseDetaillee: geminiAnalyse.analyseDetaillee,
+    };
+  }
+
+  // Fallback vers l'analyse par défaut
+  return generateAnalyseCompetencesDefault(scores);
+}
+
+/**
+ * Génère une analyse par défaut (sans IA)
+ */
+export function generateAnalyseCompetencesDefault(scores: ScoreDetail): AnalyseCompetences {
   const pointsForts: string[] = [];
   const axesAmelioration: string[] = [];
   const recommandationsPrioritaires: string[] = [];

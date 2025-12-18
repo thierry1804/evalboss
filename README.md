@@ -71,7 +71,13 @@ Application web complète d'évaluation 360° des collaborateurs avec intégrati
    ```env
    VITE_SUPABASE_URL=your-supabase-project-url
    VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+   
+   # Optionnel : Clé API Google Gemini pour les analyses IA avancées
+   # Obtenez votre clé sur https://makersuite.google.com/app/apikey
+   VITE_GEMINI_API_KEY=your-gemini-api-key
    ```
+   
+   **Note** : Si la clé API Gemini n'est pas configurée, l'application utilisera des recommandations par défaut.
 
 5. **Lancer l'application**
    ```bash

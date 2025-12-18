@@ -55,6 +55,16 @@ export interface Collaborateur {
   dateDerniereEval?: Date;
 }
 
+// Interface pour l'analyse Gemini
+export interface AnalyseGemini {
+  pointsForts: string[];
+  axesAmelioration: string[];
+  recommandationsPrioritaires: string[];
+  planProgression: string[];
+  analyseDetaillee: string;
+  dateGeneration: Date;
+}
+
 // Interface pour une évaluation complète
 export interface Evaluation {
   id: string;
@@ -68,6 +78,7 @@ export interface Evaluation {
     collaborateur?: string;
     manager?: string;
   };
+  analyseGemini?: AnalyseGemini; // Analyse générée par Gemini
   statut: StatutEvaluation;
   timestamps: {
     creation: Date;
