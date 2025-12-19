@@ -26,6 +26,18 @@ export function formatDateShort(date: Date | string): string {
   }).format(d);
 }
 
+// Fonction pour formater une date avec l'heure
+export function formatDateTime(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return new Intl.DateTimeFormat('fr-FR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+}
+
 // Fonction pour calculer la différence en mois entre deux dates
 export function monthsDiff(date1: Date, date2: Date): number {
   const months = (date2.getFullYear() - date1.getFullYear()) * 12;

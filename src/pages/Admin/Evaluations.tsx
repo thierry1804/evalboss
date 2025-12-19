@@ -6,8 +6,8 @@ import { Button } from '../../components/ui/Button';
 import { FormInput, FormSelect } from '../../components/forms';
 import { Badge } from '../../components/ui/Badge';
 import { PROFIL_LABELS, NIVEAU_IA_LABELS, StatutEvaluation } from '../../types';
-import { formatDateShort } from '../../lib/utils';
-import { Search, Eye } from 'lucide-react';
+import { formatDateTime } from '../../lib/utils';
+import { Search, Eye, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface EvaluationListItem {
   id: string;
@@ -42,6 +42,13 @@ export function Evaluations() {
     statut: '',
     niveauIA: '',
   });
+  const [sortConfig, setSortConfig] = useState<{
+    key: string | null;
+    direction: 'asc' | 'desc';
+  }>({
+    key: 'date',
+    direction: 'desc',
+  });
 
   useEffect(() => {
     loadEvaluations();
@@ -49,7 +56,7 @@ export function Evaluations() {
 
   useEffect(() => {
     applyFilters();
-  }, [evaluations, searchTerm, filters]);
+  }, [evaluations, searchTerm, filters, sortConfig]);
 
   const loadEvaluations = async () => {
     setIsLoading(true);
@@ -109,6 +116,14 @@ export function Evaluations() {
     }
   };
 
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   const applyFilters = () => {
     let filtered = [...evaluations];
 
@@ -140,7 +155,67 @@ export function Evaluations() {
       );
     }
 
+    // Tri
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sortConfig.key) {
+          case 'collaborateur':
+            aValue = `${a.prenom} ${a.nom}`.toLowerCase();
+            bValue = `${b.prenom} ${b.nom}`.toLowerCase();
+            break;
+          case 'poste':
+            aValue = PROFIL_LABELS[a.poste as keyof typeof PROFIL_LABELS];
+            bValue = PROFIL_LABELS[b.poste as keyof typeof PROFIL_LABELS];
+            break;
+          case 'date':
+            aValue = new Date(a.created_at).getTime();
+            bValue = new Date(b.created_at).getTime();
+            break;
+          case 'statut':
+            aValue = a.statut;
+            bValue = b.statut;
+            break;
+          case 'score':
+            aValue = a.scores?.autoEvaluation?.total ?? 0;
+            bValue = b.scores?.autoEvaluation?.total ?? 0;
+            break;
+          case 'scoreIA':
+            aValue = a.scores?.autoEvaluation?.competencesIA ?? 0;
+            bValue = b.scores?.autoEvaluation?.competencesIA ?? 0;
+            break;
+          case 'scoreManager':
+            aValue = a.scores?.manager?.total ?? -1; // -1 pour mettre "Non revue" en dernier
+            bValue = b.scores?.manager?.total ?? -1;
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
     setFilteredEvaluations(filtered);
+  };
+
+  const getSortIcon = (columnKey: string) => {
+    if (sortConfig.key !== columnKey) {
+      return <ArrowUpDown size={14} className="ml-1 text-gray-400" />;
+    }
+    return sortConfig.direction === 'asc' ? (
+      <ArrowUp size={14} className="ml-1 text-primary-600" />
+    ) : (
+      <ArrowDown size={14} className="ml-1 text-primary-600" />
+    );
   };
 
   const getStatutBadgeVariant = (statut: StatutEvaluation) => {
@@ -248,26 +323,68 @@ export function Evaluations() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Collaborateur
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('collaborateur')}
+                    >
+                      <div className="flex items-center">
+                        Collaborateur
+                        {getSortIcon('collaborateur')}
+                      </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Poste
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('poste')}
+                    >
+                      <div className="flex items-center">
+                        Poste
+                        {getSortIcon('poste')}
+                      </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('date')}
+                    >
+                      <div className="flex items-center">
+                        Date
+                        {getSortIcon('date')}
+                      </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Statut
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('statut')}
+                    >
+                      <div className="flex items-center">
+                        Statut
+                        {getSortIcon('statut')}
+                      </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Score
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('score')}
+                    >
+                      <div className="flex items-center">
+                        Score
+                        {getSortIcon('score')}
+                      </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Score IA
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('scoreIA')}
+                    >
+                      <div className="flex items-center">
+                        Score IA
+                        {getSortIcon('scoreIA')}
+                      </div>
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Score Manager
+                    <th
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                      onClick={() => handleSort('scoreManager')}
+                    >
+                      <div className="flex items-center">
+                        Score Manager
+                        {getSortIcon('scoreManager')}
+                      </div>
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -287,7 +404,7 @@ export function Evaluations() {
                         {PROFIL_LABELS[evaluation.poste as keyof typeof PROFIL_LABELS]}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDateShort(evaluation.created_at)}
+                        {formatDateTime(evaluation.created_at)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <Badge variant={getStatutBadgeVariant(evaluation.statut)}>
