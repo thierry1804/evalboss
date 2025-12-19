@@ -29,3 +29,5 @@
 |-------|--------|
 | `*` (toutes les autres routes) | Redirige vers `/` |
 
+
+

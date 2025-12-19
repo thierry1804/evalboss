@@ -23,6 +23,11 @@ interface EvaluationListItem {
       competencesIA: number;
       niveauIA: string;
     };
+    manager?: {
+      total: number;
+      competencesIA: number;
+      niveauIA: string;
+    };
   };
 }
 
@@ -49,13 +54,54 @@ export function Evaluations() {
   const loadEvaluations = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // Charger les évaluations avec une jointure pour récupérer les scores manager
+      const { data: evaluationsData, error: evaluationsError } = await supabase
         .from('evaluations')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setEvaluations((data as any[]) || []);
+      if (evaluationsError) throw evaluationsError;
+
+      // Charger les scores manager depuis evaluations_manager
+      const { data: managerData, error: managerError } = await supabase
+        .from('evaluations_manager')
+        .select('evaluation_id, scores_manager')
+        .not('scores_manager', 'is', null);
+
+      if (managerError) {
+        console.warn('Erreur lors du chargement des scores manager:', managerError);
+      }
+
+      // Créer un map des scores manager par evaluation_id
+      const managerScoresMap = new Map<string, any>();
+      if (managerData) {
+        managerData.forEach((item) => {
+          if (item.scores_manager && Object.keys(item.scores_manager as object).length > 0) {
+            managerScoresMap.set(item.evaluation_id, item.scores_manager);
+          }
+        });
+      }
+
+      // Fusionner les données
+      const evaluationsWithManagerScores = (evaluationsData || []).map((evaluation) => {
+        const managerScores = managerScoresMap.get(evaluation.id);
+        
+        // Utiliser les scores manager depuis evaluations_manager s'ils existent,
+        // sinon utiliser ceux de evaluations.scores.manager
+        const scores = evaluation.scores || {};
+        if (managerScores) {
+          return {
+            ...evaluation,
+            scores: {
+              ...scores,
+              manager: managerScores,
+            },
+          };
+        }
+        return evaluation;
+      });
+
+      setEvaluations(evaluationsWithManagerScores);
     } catch (error: any) {
       console.error('Erreur lors du chargement:', error);
     } finally {
@@ -221,6 +267,9 @@ export function Evaluations() {
                       Score IA
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Score Manager
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -256,6 +305,25 @@ export function Evaluations() {
                           <Badge variant="ia" className="mt-1">
                             {NIVEAU_IA_LABELS[evaluation.scores.autoEvaluation.niveauIA as keyof typeof NIVEAU_IA_LABELS]}
                           </Badge>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {evaluation.scores?.manager ? (
+                          <>
+                            <div className="text-sm text-gray-900 font-medium">
+                              {evaluation.scores.manager.total?.toFixed(1) || 'N/A'}%
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              IA: {evaluation.scores.manager.competencesIA?.toFixed(1) || 'N/A'}%
+                            </div>
+                            {evaluation.scores.manager.niveauIA && (
+                              <Badge variant="ia" className="mt-1">
+                                {NIVEAU_IA_LABELS[evaluation.scores.manager.niveauIA as keyof typeof NIVEAU_IA_LABELS]}
+                              </Badge>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-sm text-gray-400">Non revue</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
