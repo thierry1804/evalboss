@@ -35,8 +35,8 @@ export function BarChartComponent({
           <YAxis domain={maxValue ? [0, maxValue] : [0, 100]} tick={{ fontSize: 12 }} />
           <Tooltip />
           <Legend />
-          <Bar dataKey={dataKey} fill={color} name="Score" />
-          {secondDataKey && <Bar dataKey={secondDataKey} fill={secondColor} name="Comparaison" />}
+          <Bar dataKey={dataKey} fill={color} name="Auto-évaluation" />
+          {secondDataKey && <Bar dataKey={secondDataKey} fill={secondColor} name="Manager" />}
         </RechartsBarChart>
       </ResponsiveContainer>
     </div>

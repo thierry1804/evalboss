@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { Questionnaire } from './pages/Questionnaire';
 import { Resultats } from './pages/Resultats';
+import { EvaluationView } from './pages/EvaluationView';
 import { Login } from './pages/Admin/Login';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Dashboard } from './pages/Admin/Dashboard';
@@ -16,6 +17,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/questionnaire/:evaluationId" element={<Questionnaire />} />
         <Route path="/resultats/:evaluationId" element={<Resultats />} />
+        <Route path="/evaluation/:id" element={<EvaluationView />} />
 
         {/* Routes admin - non protégées */}
         <Route path="/admin/login" element={<Login />} />

@@ -132,6 +132,7 @@ export const validateNoRecentEvaluation = async (
       .from('evaluations')
       .select('created_at, statut')
       .eq('matricule', matricule)
+      .neq('statut', 'brouillon') // Exclure les brouillons de la vérification
       .gte('created_at', tenMonthsAgo.toISOString())
       .order('created_at', { ascending: false })
       .limit(1);
