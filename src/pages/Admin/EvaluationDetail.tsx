@@ -11,7 +11,8 @@ import { Evaluation, Reponse, ScoreDetail, AnalyseGemini } from '../../types';
 import { PROFIL_LABELS, NIVEAU_IA_LABELS, NOTE_LABELS, GROUPE_LABELS, GroupeQuestion } from '../../types';
 import { formatDate, calculateAnciennete } from '../../lib/utils';
 import { calculateManagerScores, isManagerEvaluationComplete } from '../../lib/scoreCalculator';
-import { Sparkles, ArrowLeft, Save, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
+import { generateAnalyseCompetences, generateRecommendationsWithGemini } from '../../lib/recommendations';
+import { Sparkles, ArrowLeft, Save, CheckCircle, AlertCircle, TrendingUp, Loader2 } from 'lucide-react';
 
 export function EvaluationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +25,7 @@ export function EvaluationDetail() {
   const [scoresManager, setScoresManager] = useState<ScoreDetail | null>(null);
   const [currentGroupe, setCurrentGroupe] = useState<GroupeQuestion>('soft_skills');
   const [analyseIA, setAnalyseIA] = useState<AnalyseGemini | null>(null);
+  const [isGeneratingAnalyse, setIsGeneratingAnalyse] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -55,15 +57,27 @@ export function EvaluationDetail() {
         // Charger l'analyse IA si elle existe
         let analyseGemini: AnalyseGemini | undefined;
         if (data.analyse_ia) {
-          const analyseData = data.analyse_ia as any;
-          analyseGemini = {
-            pointsForts: analyseData.pointsForts || [],
-            axesAmelioration: analyseData.axesAmelioration || [],
-            recommandationsPrioritaires: analyseData.recommandationsPrioritaires || [],
-            planProgression: analyseData.planProgression || [],
-            analyseDetaillee: analyseData.analyseDetaillee || '',
-            dateGeneration: analyseData.dateGeneration ? new Date(analyseData.dateGeneration) : new Date(),
-          };
+          try {
+            const analyseData = data.analyse_ia as any;
+            console.log('Analyse IA trouvée dans la base:', analyseData);
+            analyseGemini = {
+              pointsForts: analyseData.pointsForts || [],
+              axesAmelioration: analyseData.axesAmelioration || [],
+              recommandationsPrioritaires: analyseData.recommandationsPrioritaires || [],
+              planProgression: analyseData.planProgression || [],
+              analyseDetaillee: analyseData.analyseDetaillee || '',
+              dateGeneration: analyseData.dateGeneration ? new Date(analyseData.dateGeneration) : new Date(),
+            };
+            console.log('Analyse IA chargée avec succès:', {
+              pointsForts: analyseGemini.pointsForts.length,
+              axesAmelioration: analyseGemini.axesAmelioration.length,
+              hasDetaillee: !!analyseGemini.analyseDetaillee,
+            });
+          } catch (parseError) {
+            console.error('Erreur lors du parsing de l\'analyse IA:', parseError);
+          }
+        } else {
+          console.log('Aucune analyse IA trouvée dans la base de données');
         }
 
         const evalData: Evaluation = {
@@ -156,6 +170,111 @@ export function EvaluationDetail() {
     setManagerReponses((prev) =>
       prev.map((r) => (r.id === reponseId ? { ...r, commentaireManager: commentaire } : r))
     );
+  };
+
+  const generateAnalyseIA = async () => {
+    if (!evaluation || !id) return;
+
+    setIsGeneratingAnalyse(true);
+    try {
+      const scores = evaluation.scores.autoEvaluation;
+      
+      // Générer l'analyse avec Gemini
+      const [analyseResult, { planProgression: plan }] = await Promise.all([
+        generateAnalyseCompetences(evaluation, scores),
+        generateRecommendationsWithGemini(evaluation, scores),
+      ]);
+
+      // Si l'analyse contient des données Gemini (analyseDetaillee), sauvegarder
+      if (analyseResult.analyseDetaillee) {
+        const analyseGemini: AnalyseGemini = {
+          pointsForts: analyseResult.pointsForts,
+          axesAmelioration: analyseResult.axesAmelioration,
+          recommandationsPrioritaires: analyseResult.recommandationsPrioritaires,
+          planProgression: plan,
+          analyseDetaillee: analyseResult.analyseDetaillee,
+          dateGeneration: new Date(),
+        };
+
+        // Préparer les données pour la sauvegarde
+        const analyseDataToSave = {
+          pointsForts: analyseGemini.pointsForts,
+          axesAmelioration: analyseGemini.axesAmelioration,
+          recommandationsPrioritaires: analyseGemini.recommandationsPrioritaires,
+          planProgression: analyseGemini.planProgression,
+          analyseDetaillee: analyseGemini.analyseDetaillee,
+          dateGeneration: analyseGemini.dateGeneration.toISOString(),
+        };
+
+        // Sauvegarder dans la base de données
+        const { data: updatedData, error } = await supabase
+          .from('evaluations')
+          .update({
+            analyse_ia: analyseDataToSave,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .select('analyse_ia')
+          .single();
+
+        if (error) {
+          console.error('Erreur lors de la sauvegarde de l\'analyse IA:', error);
+          console.error('Détails de l\'erreur:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          });
+          
+          // Si l'erreur est due à RLS, informer l'utilisateur
+          if (error.code === '42501' || error.message?.includes('policy') || error.message?.includes('permission')) {
+            alert('Erreur de permissions : Vous n\'avez peut-être pas les droits pour mettre à jour cette évaluation. Veuillez contacter l\'administrateur.');
+          } else {
+            throw error;
+          }
+          return;
+        }
+
+        console.log('Analyse IA sauvegardée avec succès dans la base de données');
+        console.log('Données sauvegardées:', updatedData);
+
+        // Mettre à jour le state local
+        setAnalyseIA(analyseGemini);
+        
+        // Mettre à jour l'évaluation locale
+        setEvaluation({
+          ...evaluation,
+          analyseGemini,
+        });
+
+        // Vérifier que la sauvegarde a bien fonctionné en relisant depuis la base
+        const { data: verificationData, error: verificationError } = await supabase
+          .from('evaluations')
+          .select('analyse_ia')
+          .eq('id', id)
+          .single();
+
+        if (verificationError) {
+          console.error('Erreur lors de la vérification:', verificationError);
+        } else if (verificationData?.analyse_ia) {
+          console.log('Vérification réussie: analyse_ia présente dans la base');
+        } else {
+          console.warn('Attention: analyse_ia non trouvée après sauvegarde');
+        }
+
+        // Recharger l'évaluation depuis la base pour s'assurer que tout est synchronisé
+        await loadEvaluation();
+
+        alert('Analyse IA générée et sauvegardée avec succès !');
+      } else {
+        alert('L\'analyse a été générée mais ne contient pas d\'analyse détaillée. Veuillez réessayer.');
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de la génération de l\'analyse IA:', error);
+      alert('Erreur lors de la génération de l\'analyse IA: ' + (error.message || 'Erreur inconnue'));
+    } finally {
+      setIsGeneratingAnalyse(false);
+    }
   };
 
   const saveManagerEvaluation = async () => {
@@ -641,6 +760,42 @@ export function EvaluationDetail() {
         </Card>
 
         {/* Analyse IA */}
+        {!analyseIA && !isGeneratingAnalyse && (
+          <Card className="mb-6">
+            <div className="text-center py-8">
+              <Sparkles className="mx-auto text-ia-purple mb-4" size={48} />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Analyse IA non disponible
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Cette évaluation n'a pas encore été analysée par l'IA. Cliquez sur le bouton ci-dessous pour générer une analyse détaillée.
+              </p>
+              <Button
+                variant="primary"
+                onClick={generateAnalyseIA}
+                disabled={!evaluation}
+              >
+                <Sparkles size={16} className="mr-2" />
+                Générer l'analyse IA
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {isGeneratingAnalyse && (
+          <Card className="mb-6">
+            <div className="text-center py-8">
+              <Loader2 className="mx-auto text-primary-600 mb-4 animate-spin" size={48} />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Génération de l'analyse IA en cours...
+              </h3>
+              <p className="text-gray-600">
+                Veuillez patienter, cela peut prendre quelques instants.
+              </p>
+            </div>
+          </Card>
+        )}
+
         {analyseIA && (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
