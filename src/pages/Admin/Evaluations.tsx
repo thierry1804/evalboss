@@ -141,11 +141,12 @@ export function Evaluations() {
         </div>
 
         {/* Filtres */}
-        <Card className="mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
+        <Card className="mb-6 p-4">
+          <div className="flex flex-col lg:flex-row gap-3 items-end">
+            {/* Champ de recherche */}
+            <div className="flex-1 w-full lg:w-auto min-w-0">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                 <FormInput
                   placeholder="Rechercher par nom ou matricule..."
                   value={searchTerm}
@@ -154,24 +155,34 @@ export function Evaluations() {
                 />
               </div>
             </div>
-            <FormSelect
-              label="Poste"
-              value={filters.poste}
-              onChange={(e) => setFilters({ ...filters, poste: e.target.value })}
-              options={posteOptions}
-            />
-            <FormSelect
-              label="Statut"
-              value={filters.statut}
-              onChange={(e) => setFilters({ ...filters, statut: e.target.value as StatutEvaluation })}
-              options={statutOptions}
-            />
-            <FormSelect
-              label="Niveau IA"
-              value={filters.niveauIA}
-              onChange={(e) => setFilters({ ...filters, niveauIA: e.target.value })}
-              options={niveauIAOptions}
-            />
+            
+            {/* Filtres en ligne compacte */}
+            <div className="flex flex-wrap lg:flex-nowrap gap-3 w-full lg:w-auto">
+              <div className="flex-1 lg:flex-none lg:w-48">
+                <FormSelect
+                  label="Poste"
+                  value={filters.poste}
+                  onChange={(e) => setFilters({ ...filters, poste: e.target.value })}
+                  options={posteOptions}
+                />
+              </div>
+              <div className="flex-1 lg:flex-none lg:w-40">
+                <FormSelect
+                  label="Statut"
+                  value={filters.statut}
+                  onChange={(e) => setFilters({ ...filters, statut: e.target.value as StatutEvaluation })}
+                  options={statutOptions}
+                />
+              </div>
+              <div className="flex-1 lg:flex-none lg:w-40">
+                <FormSelect
+                  label="Niveau IA"
+                  value={filters.niveauIA}
+                  onChange={(e) => setFilters({ ...filters, niveauIA: e.target.value })}
+                  options={niveauIAOptions}
+                />
+              </div>
+            </div>
           </div>
         </Card>
 

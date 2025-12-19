@@ -7,11 +7,11 @@ import { Badge } from '../../components/ui/Badge';
 import { Textarea } from '../../components/ui/Textarea';
 import { RadarChartComponent } from '../../components/charts/RadarChart';
 import { BarChartComponent } from '../../components/charts/BarChart';
-import { Evaluation, Reponse, ScoreDetail } from '../../types';
+import { Evaluation, Reponse, ScoreDetail, AnalyseGemini } from '../../types';
 import { PROFIL_LABELS, NIVEAU_IA_LABELS, NOTE_LABELS, GROUPE_LABELS, GroupeQuestion } from '../../types';
 import { formatDate, calculateAnciennete } from '../../lib/utils';
 import { calculateManagerScores, isManagerEvaluationComplete } from '../../lib/scoreCalculator';
-import { Sparkles, ArrowLeft, Save } from 'lucide-react';
+import { Sparkles, ArrowLeft, Save, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
 
 export function EvaluationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -23,6 +23,7 @@ export function EvaluationDetail() {
   const [commentaireManager, setCommentaireManager] = useState('');
   const [scoresManager, setScoresManager] = useState<ScoreDetail | null>(null);
   const [currentGroupe, setCurrentGroupe] = useState<GroupeQuestion>('soft_skills');
+  const [analyseIA, setAnalyseIA] = useState<AnalyseGemini | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -51,6 +52,20 @@ export function EvaluationDetail() {
       if (error) throw error;
 
       if (data) {
+        // Charger l'analyse IA si elle existe
+        let analyseGemini: AnalyseGemini | undefined;
+        if (data.analyse_ia) {
+          const analyseData = data.analyse_ia as any;
+          analyseGemini = {
+            pointsForts: analyseData.pointsForts || [],
+            axesAmelioration: analyseData.axesAmelioration || [],
+            recommandationsPrioritaires: analyseData.recommandationsPrioritaires || [],
+            planProgression: analyseData.planProgression || [],
+            analyseDetaillee: analyseData.analyseDetaillee || '',
+            dateGeneration: analyseData.dateGeneration ? new Date(analyseData.dateGeneration) : new Date(),
+          };
+        }
+
         const evalData: Evaluation = {
           id: data.id,
           collaborateur: {
@@ -65,6 +80,7 @@ export function EvaluationDetail() {
           reponses: (data.reponses as any[]) || [],
           scores: data.scores as { autoEvaluation: ScoreDetail; manager?: ScoreDetail },
           commentaires: (data.commentaires as any) || {},
+          analyseGemini,
           statut: data.statut as any,
           timestamps: {
             creation: new Date(data.created_at),
@@ -74,6 +90,7 @@ export function EvaluationDetail() {
         };
 
         setEvaluation(evalData);
+        setAnalyseIA(analyseGemini || null);
         
         // Charger les données manager depuis evaluations_manager
         const { data: { user } } = await supabase.auth.getUser();
@@ -622,6 +639,111 @@ export function EvaluationDetail() {
             placeholder="Ajoutez un commentaire général sur l'évaluation..."
           />
         </Card>
+
+        {/* Analyse IA */}
+        {analyseIA && (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              <Card>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <CheckCircle className="text-green-600" size={20} />
+                  Points forts
+                </h3>
+                {analyseIA.pointsForts.length > 0 ? (
+                  <ul className="space-y-2">
+                    {analyseIA.pointsForts.map((point, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">✓</span>
+                        <span className="text-gray-700">{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500">Aucun point fort identifié.</p>
+                )}
+              </Card>
+
+              <Card>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <AlertCircle className="text-yellow-600" size={20} />
+                  Axes d'amélioration
+                </h3>
+                {analyseIA.axesAmelioration.length > 0 ? (
+                  <ul className="space-y-2">
+                    {analyseIA.axesAmelioration.map((axe, index) => (
+                      <li key={index} className="flex items-start gap-2">
+                        <span className="text-yellow-600 mt-1">→</span>
+                        <span className="text-gray-700">{axe}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500">Aucun axe d'amélioration identifié.</p>
+                )}
+              </Card>
+            </div>
+
+            {/* Recommandations prioritaires */}
+            {analyseIA.recommandationsPrioritaires.length > 0 && (
+              <Card className="mb-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <TrendingUp className="text-primary-600" size={20} />
+                  Recommandations prioritaires
+                </h3>
+                <ul className="space-y-3">
+                  {analyseIA.recommandationsPrioritaires.map((rec, index) => (
+                    <li key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <span className="flex-shrink-0 w-6 h-6 bg-primary-600 text-white rounded-full flex items-center justify-center text-sm font-medium">
+                        {index + 1}
+                      </span>
+                      <span className="text-gray-700">{rec}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+
+            {/* Plan de progression */}
+            {analyseIA.planProgression.length > 0 && (
+              <Card className="mb-6 bg-gradient-to-r from-ia-purple/10 to-ia-cyan/10 border-2 border-ia-purple/20">
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="text-ia-purple" size={24} />
+                  <h3 className="text-xl font-semibold text-gray-900">Plan de progression (6-12 mois)</h3>
+                </div>
+                <ol className="space-y-2">
+                  {analyseIA.planProgression.map((etape, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 bg-ia-purple text-white rounded-full flex items-center justify-center text-sm font-medium">
+                        {index + 1}
+                      </span>
+                      <span className="text-gray-700">{etape}</span>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            )}
+
+            {/* Analyse détaillée */}
+            {analyseIA.analyseDetaillee && (
+              <Card className="mb-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Sparkles className="text-ia-purple" size={20} />
+                  Analyse détaillée par l'IA
+                </h3>
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-gray-700 whitespace-pre-line leading-relaxed">
+                    {analyseIA.analyseDetaillee}
+                  </p>
+                </div>
+                {analyseIA.dateGeneration && (
+                  <p className="text-xs text-gray-500 mt-3">
+                    Analyse générée le {formatDate(analyseIA.dateGeneration)}
+                  </p>
+                )}
+              </Card>
+            )}
+          </>
+        )}
 
       </div>
     </div>
