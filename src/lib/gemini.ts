@@ -1,4 +1,4 @@
-import { Evaluation, ScoreDetail } from '../types';
+import { Evaluation, ScoreDetail, Reponse } from '../types';
 import { PROFIL_LABELS, NIVEAU_IA_LABELS } from '../types';
 
 // Interface pour les réponses de Gemini (sans dateGeneration)
@@ -218,5 +218,251 @@ function parseGeminiResponse(text: string): GeminiAnalyse {
     console.error('Erreur lors du parsing de la réponse Gemini:', error);
     throw new Error('Format de réponse Gemini invalide');
   }
+}
+
+/**
+ * Génère une suggestion de commentaire manager en tenant compte de l'évaluation du collaborateur et du manager
+ */
+export async function generateManagerCommentSuggestion(
+  evaluation: Evaluation,
+  scoresAuto: ScoreDetail,
+  managerReponses: Reponse[],
+  scoresManager: ScoreDetail | null,
+  commentaireManagerExistant?: string
+): Promise<string | null> {
+  if (!GEMINI_API_KEY) {
+    console.warn('⚠️ Clé API Gemini non configurée (VITE_GEMINI_API_KEY).');
+    return null;
+  }
+
+  console.log('🚀 Génération de la suggestion de commentaire manager...');
+  
+  // Liste des modèles à essayer dans l'ordre
+  const modelsToTry = ['gemini-3-flash-preview', 'gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro', 'gemini-1.5-pro'];
+  
+  for (const model of modelsToTry) {
+    try {
+      const prompt = buildManagerCommentPrompt(evaluation, scoresAuto, managerReponses, scoresManager, commentaireManagerExistant);
+      const apiUrl = `${GEMINI_API_BASE_URL}/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      console.log(`📤 Essai avec le modèle ${model}...`);
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        // Si 404, essayer le modèle suivant
+        if (response.status === 404) {
+          console.warn(`⚠️ Modèle ${model} non disponible (404), essai du modèle suivant...`);
+          continue;
+        }
+        
+        console.error('❌ Erreur API Gemini:', {
+          status: response.status,
+          statusText: response.statusText,
+          model: model,
+          error: errorData,
+        });
+        return null;
+      }
+
+      const data = await response.json();
+      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!textResponse) {
+        console.error('❌ Réponse Gemini invalide (pas de texte):', data);
+        return null;
+      }
+
+      console.log(`✅ Réponse Gemini reçue avec le modèle ${model}`);
+      // Nettoyer la réponse (enlever markdown si présent)
+      const cleanedResponse = textResponse
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .replace(/^["']|["']$/g, '')
+        .trim();
+      
+      return cleanedResponse;
+    } catch (error) {
+      console.error(`❌ Erreur avec le modèle ${model}:`, error);
+      continue;
+    }
+  }
+  
+  console.error('❌ Aucun modèle Gemini disponible.');
+  return null;
+}
+
+/**
+ * Construit le prompt pour générer une suggestion de commentaire manager
+ */
+function buildManagerCommentPrompt(
+  evaluation: Evaluation,
+  scoresAuto: ScoreDetail,
+  managerReponses: Reponse[],
+  scoresManager: ScoreDetail | null,
+  commentaireManagerExistant?: string
+): string {
+  const profil = PROFIL_LABELS[evaluation.collaborateur.poste];
+  const niveauIA = NIVEAU_IA_LABELS[scoresAuto.niveauIA];
+  const niveauSeniorite = evaluation.collaborateur.niveauSeniorite;
+
+  // Récupérer les questions avec les notes et commentaires du collaborateur
+  const questionsCollaborateur = evaluation.reponses.map((r) => ({
+    groupe: r.groupe,
+    question: r.question,
+    note: r.noteCollaborateur,
+    commentaire: r.commentaireCollaborateur || '',
+    categorieIA: r.categorieIA,
+  }));
+
+  // Récupérer les notes et commentaires du manager
+  const questionsManager = managerReponses.map((r) => ({
+    groupe: r.groupe,
+    question: r.question,
+    noteManager: r.noteManager,
+    commentaireManager: r.commentaireManager || '',
+    noteCollaborateur: r.noteCollaborateur,
+    commentaireCollaborateur: r.commentaireCollaborateur || '',
+    categorieIA: r.categorieIA,
+  }));
+
+  // Identifier les écarts significatifs
+  const ecarts = questionsManager
+    .filter((q) => q.noteManager !== undefined)
+    .map((q) => ({
+      question: q.question,
+      noteAuto: q.noteCollaborateur,
+      noteManager: q.noteManager!,
+      ecart: Math.abs(q.noteCollaborateur - q.noteManager!),
+      commentaireAuto: q.commentaireCollaborateur,
+      commentaireManager: q.commentaireManager,
+    }))
+    .filter((e) => e.ecart > 1)
+    .sort((a, b) => b.ecart - a.ecart);
+
+  // Commentaire final du collaborateur
+  const commentaireFinalCollaborateur = evaluation.commentaires?.collaborateur || '';
+
+  // Grouper les questions par catégorie pour le manager
+  const questionsManagerSoftSkills = questionsManager.filter((q) => q.groupe === 'soft_skills' && q.noteManager !== undefined);
+  const questionsManagerHardSkills = questionsManager.filter((q) => q.groupe === 'hard_skills' && q.noteManager !== undefined);
+  const questionsManagerPerformance = questionsManager.filter((q) => q.groupe === 'performance_projet' && q.noteManager !== undefined);
+  const questionsManagerIA = questionsManager.filter((q) => q.categorieIA && q.noteManager !== undefined);
+
+  return `Tu es un expert en évaluation de performance et en management. 
+Aide un manager à rédiger un commentaire constructif et professionnel pour son collaborateur, en tenant compte de l'auto-évaluation du collaborateur et de l'évaluation du manager.
+
+**Contexte du collaborateur :**
+- Profil : ${profil}
+- Niveau de séniorité : ${niveauSeniorite}
+- Nom : ${evaluation.collaborateur.prenom} ${evaluation.collaborateur.nom}
+
+**Scores Auto-évaluation du collaborateur :**
+- Score total : ${scoresAuto.total.toFixed(1)}%
+- Soft Skills : ${scoresAuto.softSkills.toFixed(1)}%
+- Hard Skills : ${scoresAuto.hardSkills.toFixed(1)}%
+- Performance Projet : ${scoresAuto.performanceProjet.toFixed(1)}%
+- Compétences IA : ${scoresAuto.competencesIA.toFixed(1)}%
+- Niveau IA : ${niveauIA}
+
+${scoresManager ? `**Scores Manager :**
+- Score total : ${scoresManager.total.toFixed(1)}%
+- Soft Skills : ${scoresManager.softSkills.toFixed(1)}%
+- Hard Skills : ${scoresManager.hardSkills.toFixed(1)}%
+- Performance Projet : ${scoresManager.performanceProjet.toFixed(1)}%
+- Compétences IA : ${scoresManager.competencesIA.toFixed(1)}%
+- Niveau IA : ${NIVEAU_IA_LABELS[scoresManager.niveauIA]}
+
+` : '**Note :** Le manager n\'a pas encore complété toutes ses évaluations.\n\n'}
+
+**Évaluation du collaborateur (Auto-évaluation) :**
+
+**Soft Skills :**
+${questionsCollaborateur.filter(q => q.groupe === 'soft_skills').map((q, i) => `${i + 1}. ${q.question} - Note: ${q.note}/5${q.commentaire ? ` - Commentaire: "${q.commentaire}"` : ''}`).join('\n')}
+
+**Hard Skills :**
+${questionsCollaborateur.filter(q => q.groupe === 'hard_skills').map((q, i) => `${i + 1}. ${q.question} - Note: ${q.note}/5${q.commentaire ? ` - Commentaire: "${q.commentaire}"` : ''}`).join('\n')}
+
+**Performance Projet :**
+${questionsCollaborateur.filter(q => q.groupe === 'performance_projet').map((q, i) => `${i + 1}. ${q.question} - Note: ${q.note}/5${q.commentaire ? ` - Commentaire: "${q.commentaire}"` : ''}`).join('\n')}
+
+**Compétences IA :**
+${questionsCollaborateur.filter(q => q.categorieIA).map((q, i) => `${i + 1}. ${q.question} - Note: ${q.note}/5${q.commentaire ? ` - Commentaire: "${q.commentaire}"` : ''}`).join('\n')}
+
+${commentaireFinalCollaborateur ? `**Commentaire final du collaborateur :**\n"${commentaireFinalCollaborateur}"\n\n` : ''}
+
+**Évaluation du manager :**
+
+${questionsManagerSoftSkills.length > 0 ? `**Soft Skills (évaluées par le manager) :**
+${questionsManagerSoftSkills.map((q, i) => `${i + 1}. ${q.question}
+   - Note collaborateur: ${q.noteCollaborateur}/5${q.commentaireCollaborateur ? ` - Commentaire: "${q.commentaireCollaborateur}"` : ''}
+   - Note manager: ${q.noteManager}/5${q.commentaireManager ? ` - Commentaire manager: "${q.commentaireManager}"` : ''}
+`).join('\n')}
+
+` : ''}${questionsManagerHardSkills.length > 0 ? `**Hard Skills (évaluées par le manager) :**
+${questionsManagerHardSkills.map((q, i) => `${i + 1}. ${q.question}
+   - Note collaborateur: ${q.noteCollaborateur}/5${q.commentaireCollaborateur ? ` - Commentaire: "${q.commentaireCollaborateur}"` : ''}
+   - Note manager: ${q.noteManager}/5${q.commentaireManager ? ` - Commentaire manager: "${q.commentaireManager}"` : ''}
+`).join('\n')}
+
+` : ''}${questionsManagerPerformance.length > 0 ? `**Performance Projet (évaluées par le manager) :**
+${questionsManagerPerformance.map((q, i) => `${i + 1}. ${q.question}
+   - Note collaborateur: ${q.noteCollaborateur}/5${q.commentaireCollaborateur ? ` - Commentaire: "${q.commentaireCollaborateur}"` : ''}
+   - Note manager: ${q.noteManager}/5${q.commentaireManager ? ` - Commentaire manager: "${q.commentaireManager}"` : ''}
+`).join('\n')}
+
+` : ''}${questionsManagerIA.length > 0 ? `**Compétences IA (évaluées par le manager) :**
+${questionsManagerIA.map((q, i) => `${i + 1}. ${q.question}
+   - Note collaborateur: ${q.noteCollaborateur}/5${q.commentaireCollaborateur ? ` - Commentaire: "${q.commentaireCollaborateur}"` : ''}
+   - Note manager: ${q.noteManager}/5${q.commentaireManager ? ` - Commentaire manager: "${q.commentaireManager}"` : ''}
+`).join('\n')}
+
+` : ''}${ecarts.length > 0 ? `**Écarts significatifs entre auto-évaluation et évaluation manager (écart > 1 point) :**
+${ecarts.map((e, i) => `${i + 1}. ${e.question}
+   - Note auto: ${e.noteAuto}/5${e.commentaireAuto ? ` - Commentaire auto: "${e.commentaireAuto}"` : ''}
+   - Note manager: ${e.noteManager}/5${e.commentaireManager ? ` - Commentaire manager: "${e.commentaireManager}"` : ''}
+   - Écart: ${e.ecart} point(s)
+`).join('\n')}
+
+` : ''}${commentaireManagerExistant ? `**Commentaire manager existant (à améliorer/compléter) :**\n"${commentaireManagerExistant}"\n\n` : ''}
+
+**Instructions :**
+Génère un commentaire manager professionnel, constructif et bienveillant (maximum 1000 caractères) qui :
+1. **Reconnaît les forces** : Mentionne les points forts identifiés dans l'évaluation (notes élevées, compétences remarquables)
+2. **Souligne les écarts positifs** : Si le manager a noté plus haut que l'auto-évaluation, reconnais cette performance
+3. **Adresse les écarts** : Si des écarts significatifs existent entre auto-évaluation et évaluation manager, explique-les de manière constructive
+4. **Propose des axes d'amélioration** : Identifie 2-3 axes d'amélioration prioritaires basés sur les notes et commentaires du manager
+5. **Reconnaît les efforts** : Si le collaborateur a mentionné des difficultés ou besoins dans ses commentaires, montre que tu les as entendus
+6. **Ton professionnel** : Utilise un ton encourageant, constructif et professionnel, adapté à une évaluation formelle
+7. **Personnalisé** : Référence des éléments spécifiques de l'évaluation (questions, commentaires) plutôt que des généralités
+8. **Équilibré** : Balance entre reconnaissance des forces et identification des opportunités de développement
+
+**Format :**
+- Maximum 1000 caractères
+- Paragraphes courts et structurés
+- Utilise "tu" pour s'adresser au collaborateur
+- Évite les répétitions
+- Sois spécifique et concret
+
+${commentaireManagerExistant ? '**Note :** Si un commentaire existe déjà, améliore-le en tenant compte de toutes les informations ci-dessus.\n\n' : ''}
+
+Génère UNIQUEMENT le commentaire, sans préambule, sans formatage markdown, sans guillemets autour du texte.`;
 }
 
