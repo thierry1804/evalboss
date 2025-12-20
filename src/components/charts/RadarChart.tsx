@@ -49,7 +49,8 @@ export function RadarChartComponent({
             dataKey={dataKey}
             stroke={color}
             fill={color}
-            fillOpacity={0.6}
+            fillOpacity={0.3}
+            strokeWidth={2}
           />
           {secondData && (
             <Radar
@@ -57,7 +58,9 @@ export function RadarChartComponent({
               dataKey={secondDataKey}
               stroke={secondColor}
               fill={secondColor}
-              fillOpacity={0.6}
+              fillOpacity={0.3}
+              strokeWidth={2}
+              strokeDasharray="5 5"
             />
           )}
           <Legend />

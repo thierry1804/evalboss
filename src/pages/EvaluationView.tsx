@@ -10,7 +10,7 @@ import { generateRecommendations, AnalyseCompetences } from '../lib/recommendati
 import { Evaluation, AnalyseGemini, Reponse, ScoreDetail } from '../types';
 import { NIVEAU_IA_LABELS, PROFIL_LABELS, GROUPE_LABELS, GroupeQuestion, NOTE_LABELS } from '../types';
 import { formatDate } from '../lib/utils';
-import { calculateScores } from '../lib/scoreCalculator';
+import { calculateAutoEvaluationScores } from '../lib/scoreCalculator';
 import { exportEvaluationToPDF } from '../lib/pdfExport';
 import { CheckCircle, AlertCircle, TrendingUp, Sparkles, Download } from 'lucide-react';
 
@@ -74,7 +74,7 @@ export function EvaluationView() {
           },
           reponses: (data.reponses as any[]) || [],
           scores: {
-            autoEvaluation: calculateScores((data.reponses as any[]) || []),
+            autoEvaluation: calculateAutoEvaluationScores((data.reponses as any[]) || []),
             manager: (data.scores as any)?.manager,
           },
           commentaires: (data.commentaires as any) || {},
@@ -191,6 +191,12 @@ export function EvaluationView() {
   const moyenneHardSkills = scores.hardSkills / 20;
   const moyennePerformanceProjet = scores.performanceProjet / 20;
   const moyenneIA = scores.competencesIA / 20;
+  
+  // Calculer les moyennes manager si disponibles
+  const moyenneSoftSkillsMgr = scoresMgr ? scoresMgr.softSkills / 20 : 0;
+  const moyenneHardSkillsMgr = scoresMgr ? scoresMgr.hardSkills / 20 : 0;
+  const moyennePerformanceProjetMgr = scoresMgr ? scoresMgr.performanceProjet / 20 : 0;
+  const moyenneIAMgr = scoresMgr ? scoresMgr.competencesIA / 20 : 0;
 
   // Données pour le graphique radar principal
   const radarData = [
@@ -211,6 +217,16 @@ export function EvaluationView() {
     { subject: 'Utilisation outils', value: iaMoyenne * 0.9 },
     { subject: 'Intégration projets', value: iaMoyenne * 0.85 },
   ];
+
+  // Données pour le graphique radar IA manager si disponible
+  const iaRadarDataManager = scoresMgr ? (() => {
+    const iaMoyenneMgr = scoresMgr.competencesIA;
+    return [
+      { subject: 'Compétences IA', value: iaMoyenneMgr },
+      { subject: 'Utilisation outils', value: iaMoyenneMgr * 0.9 },
+      { subject: 'Intégration projets', value: iaMoyenneMgr * 0.85 },
+    ];
+  })() : [];
 
   // Données pour les graphiques en barres
   const barData = [
@@ -307,7 +323,7 @@ export function EvaluationView() {
                 {scoresMgr && (
                   <div>
                     <div className="text-2xl font-bold text-purple-600">{scoresMgr.softSkills.toFixed(1)}%</div>
-                    <div className="text-xs text-gray-500">{(scoresMgr.softSkills / 20).toFixed(1)}/5</div>
+                    <div className="text-xs text-gray-500">{moyenneSoftSkillsMgr.toFixed(1)}/5</div>
                   </div>
                 )}
               </div>
@@ -324,7 +340,7 @@ export function EvaluationView() {
                 {scoresMgr && (
                   <div>
                     <div className="text-2xl font-bold text-purple-600">{scoresMgr.hardSkills.toFixed(1)}%</div>
-                    <div className="text-xs text-gray-500">{((scoresMgr.hardSkills / 20) * 2).toFixed(1)}/10</div>
+                    <div className="text-xs text-gray-500">{(moyenneHardSkillsMgr * 2).toFixed(1)}/10</div>
                   </div>
                 )}
               </div>
@@ -341,7 +357,7 @@ export function EvaluationView() {
                 {scoresMgr && (
                   <div>
                     <div className="text-2xl font-bold text-purple-600">{scoresMgr.performanceProjet.toFixed(1)}%</div>
-                    <div className="text-xs text-gray-500">{((scoresMgr.performanceProjet / 20) * 2).toFixed(1)}/10</div>
+                    <div className="text-xs text-gray-500">{(moyennePerformanceProjetMgr * 2).toFixed(1)}/10</div>
                   </div>
                 )}
               </div>
@@ -364,7 +380,7 @@ export function EvaluationView() {
                 {scoresMgr && (
                   <div>
                     <div className="text-2xl font-bold text-ia-purple">{scoresMgr.competencesIA.toFixed(1)}%</div>
-                    <div className="text-xs text-gray-500">{((scoresMgr.competencesIA / 20) * 2).toFixed(1)}/10</div>
+                    <div className="text-xs text-gray-500">{(moyenneIAMgr * 2).toFixed(1)}/10</div>
                     <Badge variant="ia" className="mt-1 text-xs">
                       {NIVEAU_IA_LABELS[scoresMgr.niveauIA]}
                     </Badge>
@@ -393,48 +409,6 @@ export function EvaluationView() {
           </div>
         </Card>
 
-        {/* Section dédiée aux scores manager si disponibles */}
-        {scoresMgr && (
-          <Card className="mb-8 bg-gradient-to-r from-purple-50 to-purple-100 border-2 border-purple-200">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-3 h-3 rounded-full bg-purple-600"></div>
-              <h3 className="text-lg font-semibold text-gray-900">Scores de l'évaluation Manager</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="text-center bg-white rounded-lg p-4 border border-purple-200">
-                <div className="text-3xl font-bold text-purple-600 mb-1">{scoresMgr.total.toFixed(1)}%</div>
-                <div className="text-sm text-gray-600">Score Total</div>
-              </div>
-              <div className="text-center bg-white rounded-lg p-4 border border-purple-200">
-                <div className="text-3xl font-bold text-purple-600 mb-1">{scoresMgr.softSkills.toFixed(1)}%</div>
-                <div className="text-sm text-gray-600">Soft Skills</div>
-                <div className="text-xs text-gray-500 mt-1">{(scoresMgr.softSkills / 20).toFixed(1)}/5</div>
-              </div>
-              <div className="text-center bg-white rounded-lg p-4 border border-purple-200">
-                <div className="text-3xl font-bold text-purple-600 mb-1">{scoresMgr.hardSkills.toFixed(1)}%</div>
-                <div className="text-sm text-gray-600">Hard Skills</div>
-                <div className="text-xs text-gray-500 mt-1">{((scoresMgr.hardSkills / 20) * 2).toFixed(1)}/10</div>
-              </div>
-              <div className="text-center bg-white rounded-lg p-4 border border-purple-200">
-                <div className="text-3xl font-bold text-purple-600 mb-1">{scoresMgr.performanceProjet.toFixed(1)}%</div>
-                <div className="text-sm text-gray-600">Performance Projet</div>
-                <div className="text-xs text-gray-500 mt-1">{((scoresMgr.performanceProjet / 20) * 2).toFixed(1)}/10</div>
-              </div>
-              <div className="text-center bg-white rounded-lg p-4 border border-purple-200">
-                <div className="text-3xl font-bold text-ia-purple mb-1">{scoresMgr.competencesIA.toFixed(1)}%</div>
-                <div className="text-sm text-gray-600 flex items-center justify-center gap-1">
-                  <Sparkles size={14} />
-                  Compétences IA
-                </div>
-                <div className="text-xs text-gray-500 mt-1">{((scoresMgr.competencesIA / 20) * 2).toFixed(1)}/10</div>
-                <Badge variant="ia" className="mt-2">
-                  {NIVEAU_IA_LABELS[scoresMgr.niveauIA]}
-                </Badge>
-              </div>
-            </div>
-          </Card>
-        )}
-
         {/* Graphiques radar */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {scoresMgr ? (
@@ -444,6 +418,8 @@ export function EvaluationView() {
                 secondData={radarDataManager}
                 title="Comparaison Auto-évaluation vs Manager"
                 secondDataKey="value2"
+                color="#3b82f6"
+                secondColor="#8b5cf6"
               />
             </Card>
           ) : (
@@ -456,14 +432,28 @@ export function EvaluationView() {
               />
             </Card>
           )}
-          <Card>
-            <RadarChartComponent
-              data={iaRadarData}
-              title="Compétences Intelligence Artificielle"
-              maxValue={100}
-              color="#8b5cf6"
-            />
-          </Card>
+          {scoresMgr ? (
+            <Card>
+              <RadarChartComponent
+                data={iaRadarData}
+                secondData={iaRadarDataManager}
+                title="Compétences Intelligence Artificielle"
+                secondDataKey="value2"
+                maxValue={100}
+                color="#3b82f6"
+                secondColor="#8b5cf6"
+              />
+            </Card>
+          ) : (
+            <Card>
+              <RadarChartComponent
+                data={iaRadarData}
+                title="Compétences Intelligence Artificielle"
+                maxValue={100}
+                color="#8b5cf6"
+              />
+            </Card>
+          )}
         </div>
 
         {/* Graphique en barres */}

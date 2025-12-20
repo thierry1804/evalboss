@@ -9,7 +9,7 @@ import { RadarChartComponent } from '../../components/charts/RadarChart';
 import { BarChartComponent } from '../../components/charts/BarChart';
 import { Evaluation, Reponse, ScoreDetail, AnalyseGemini } from '../../types';
 import { PROFIL_LABELS, NIVEAU_IA_LABELS, NOTE_LABELS, GROUPE_LABELS, GroupeQuestion } from '../../types';
-import { formatDate, formatDateTime, calculateAnciennete } from '../../lib/utils';
+import { formatDate, calculateAnciennete } from '../../lib/utils';
 import { calculateManagerScores, isManagerEvaluationComplete } from '../../lib/scoreCalculator';
 import { generateAnalyseCompetences, generateRecommendationsWithGemini } from '../../lib/recommendations';
 import { generateManagerCommentSuggestion } from '../../lib/gemini';
@@ -82,26 +82,6 @@ export function EvaluationDetail() {
           console.log('Aucune analyse IA trouvée dans la base de données');
         }
 
-        // Parser les timestamps correctement
-        const timestampsData = data.timestamps as any;
-        let soumissionDate: Date | undefined;
-        let validationDate: Date | undefined;
-        
-        if (timestampsData) {
-          if (timestampsData.soumission) {
-            soumissionDate = new Date(timestampsData.soumission);
-          }
-          if (timestampsData.validation) {
-            validationDate = new Date(timestampsData.validation);
-          }
-        }
-        
-        // Si le statut est "soumise" ou "validee" mais qu'il n'y a pas de date de soumission,
-        // utiliser la date de création comme fallback (pour les anciennes évaluations)
-        if ((data.statut === 'soumise' || data.statut === 'validee') && !soumissionDate) {
-          soumissionDate = new Date(data.created_at);
-        }
-
         const evalData: Evaluation = {
           id: data.id,
           collaborateur: {
@@ -120,8 +100,8 @@ export function EvaluationDetail() {
           statut: data.statut as any,
           timestamps: {
             creation: new Date(data.created_at),
-            soumission: soumissionDate,
-            validation: validationDate,
+            soumission: data.timestamps?.soumission ? new Date(data.timestamps.soumission) : undefined,
+            validation: data.timestamps?.validation ? new Date(data.timestamps.validation) : undefined,
           },
         };
 
@@ -572,7 +552,7 @@ export function EvaluationDetail() {
               <p className="text-sm text-gray-500">Date de soumission</p>
               <p className="font-medium">
                 {evaluation.timestamps.soumission 
-                  ? formatDateTime(evaluation.timestamps.soumission)
+                  ? formatDate(evaluation.timestamps.soumission)
                   : 'Non soumise'}
               </p>
             </div>

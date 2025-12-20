@@ -48,7 +48,41 @@ function determineNiveauIA(scoreIA: number): NiveauIA {
   return 'debutant';
 }
 
-// Calculer tous les scores d'une évaluation
+// Calculer le score moyen d'un groupe pour l'auto-évaluation (utilise uniquement noteCollaborateur)
+function calculateAutoEvaluationGroupScore(
+  reponses: Reponse[],
+  groupe: GroupeQuestion,
+  coefficient: number
+): number {
+  const groupeReponses = reponses.filter((r) => r.groupe === groupe);
+  if (groupeReponses.length === 0) return 0;
+
+  const sum = groupeReponses.reduce((acc, reponse) => {
+    // Toujours utiliser noteCollaborateur pour l'auto-évaluation
+    return acc + (reponse.noteCollaborateur || 0);
+  }, 0);
+
+  const moyenne = sum / groupeReponses.length;
+  // Score = moyenne × 20 pour avoir un score sur 100 (moyenne sur 5 points)
+  return Math.round((moyenne * 20 * 100)) / 100;
+}
+
+// Calculer le score IA pour l'auto-évaluation (utilise uniquement noteCollaborateur)
+function calculateAutoEvaluationIAScore(reponses: Reponse[]): number {
+  const iaReponses = reponses.filter((r) => r.categorieIA);
+  if (iaReponses.length === 0) return 0;
+
+  const sum = iaReponses.reduce((acc, reponse) => {
+    // Toujours utiliser noteCollaborateur pour l'auto-évaluation
+    return acc + (reponse.noteCollaborateur || 0);
+  }, 0);
+
+  const moyenne = sum / iaReponses.length;
+  // Score IA = moyenne × 20 pour avoir un score sur 100 (moyenne sur 5 points)
+  return Math.round((moyenne * 20 * 100)) / 100;
+}
+
+// Calculer tous les scores d'une évaluation (utilise noteManager si disponible, sinon noteCollaborateur)
 export function calculateScores(reponses: Reponse[]): ScoreDetail {
   const softSkills = calculateGroupScore(reponses, 'soft_skills', COEFFICIENT_SOFT_SKILLS);
   const hardSkills = calculateGroupScore(reponses, 'hard_skills', COEFFICIENT_HARD_SKILLS);
@@ -63,6 +97,35 @@ export function calculateScores(reponses: Reponse[]): ScoreDetail {
 
   // Score IA spécifique
   const competencesIA = calculateIAScore(reponses);
+
+  // Niveau IA
+  const niveauIA = determineNiveauIA(competencesIA);
+
+  return {
+    softSkills,
+    hardSkills,
+    performanceProjet,
+    competencesIA,
+    total,
+    niveauIA,
+  };
+}
+
+// Calculer les scores auto-évaluation (utilise toujours noteCollaborateur)
+export function calculateAutoEvaluationScores(reponses: Reponse[]): ScoreDetail {
+  const softSkills = calculateAutoEvaluationGroupScore(reponses, 'soft_skills', COEFFICIENT_SOFT_SKILLS);
+  const hardSkills = calculateAutoEvaluationGroupScore(reponses, 'hard_skills', COEFFICIENT_HARD_SKILLS);
+  const performanceProjet = calculateAutoEvaluationGroupScore(
+    reponses,
+    'performance_projet',
+    COEFFICIENT_PERFORMANCE_PROJET
+  );
+
+  // Score total = moyenne simple des trois scores (tous sur 100)
+  const total = Math.round(((softSkills + hardSkills + performanceProjet) / 3) * 100) / 100;
+
+  // Score IA spécifique
+  const competencesIA = calculateAutoEvaluationIAScore(reponses);
 
   // Niveau IA
   const niveauIA = determineNiveauIA(competencesIA);
