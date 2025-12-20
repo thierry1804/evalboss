@@ -15,6 +15,7 @@ export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: An
   const primaryColor = [37, 99, 235]; // blue-600
   const grayColor = [107, 114, 128]; // gray-500
   const purpleColor = [139, 92, 246]; // purple-500
+  const managerColor = [147, 51, 234]; // purple-600 pour manager
 
   // Fonction pour ajouter une nouvelle page si nécessaire
   const checkPageBreak = (requiredHeight: number) => {
@@ -62,11 +63,13 @@ export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: An
   const collaborateurInfo = `${evaluation.collaborateur.prenom} ${evaluation.collaborateur.nom} - ${PROFIL_LABELS[evaluation.collaborateur.poste]}`;
   doc.text(collaborateurInfo, margin, yPosition);
   yPosition += 6;
-  doc.setFontSize(10);
-  doc.text(`Date de création : ${formatDate(evaluation.timestamps.creation)}`, margin, yPosition);
+  const dateEval = evaluation.timestamps.soumission || evaluation.timestamps.creation;
+  doc.text(`Date de l'évaluation : ${formatDate(dateEval)}`, margin, yPosition);
   yPosition += 15;
 
   const scores = evaluation.scores.autoEvaluation;
+  const scoresMgr = evaluation.scores.manager;
+  const hasManagerEvaluation = !!scoresMgr;
 
   // Générer les recommandations
   const recommandations = generateRecommendations(evaluation.collaborateur.poste, scores);
@@ -94,63 +97,118 @@ export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: An
   const moyenneHardSkills = scores.hardSkills / 20;
   const moyennePerformanceProjet = scores.performanceProjet / 20;
   const moyenneIA = scores.competencesIA / 20;
+  
+  const moyenneSoftSkillsMgr = scoresMgr ? scoresMgr.softSkills / 20 : 0;
+  const moyenneHardSkillsMgr = scoresMgr ? scoresMgr.hardSkills / 20 : 0;
+  const moyennePerformanceProjetMgr = scoresMgr ? scoresMgr.performanceProjet / 20 : 0;
+  const moyenneIAMgr = scoresMgr ? scoresMgr.competencesIA / 20 : 0;
 
   // Scores principaux
   doc.setFontSize(14);
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'bold');
-  doc.text('Scores principaux', margin, yPosition);
+  if (hasManagerEvaluation) {
+    doc.text('Scores de l\'évaluation', margin, yPosition);
+  } else {
+    doc.text('Scores principaux', margin, yPosition);
+  }
   yPosition += 10;
 
-  // Tableau des scores
-  const scoreData = [
-    ['Score Total', `${scores.total.toFixed(1)}%`, ''],
-    ['Soft Skills', `${scores.softSkills.toFixed(1)}%`, `${moyenneSoftSkills.toFixed(1)}/5`],
-    ['Hard Skills', `${scores.hardSkills.toFixed(1)}%`, `${(moyenneHardSkills * 2).toFixed(1)}/10`],
-    ['Performance Projet', `${scores.performanceProjet.toFixed(1)}%`, `${(moyennePerformanceProjet * 2).toFixed(1)}/10`],
-    ['Compétences IA', `${scores.competencesIA.toFixed(1)}%`, `${(moyenneIA * 2).toFixed(1)}/10`],
-  ];
+  // Tableau des scores - avec comparaison si manager existe
+  if (hasManagerEvaluation) {
+    // Tableau comparatif avec deux colonnes
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const rowHeight = 8;
+    const colWidths = [70, 50, 50];
+    const colX = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1]];
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  const tableStartY = yPosition;
-  const rowHeight = 8;
-  const colWidths = [70, 40, 30];
-  const colX = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1]];
-
-  // En-têtes du tableau
-  doc.setFont('helvetica', 'bold');
-  doc.text('Catégorie', colX[0], yPosition);
-  doc.text('Score', colX[1], yPosition);
-  doc.text('Détail', colX[2], yPosition);
-  yPosition += rowHeight;
-
-  // Ligne de séparation
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
-  yPosition += 3;
-
-  // Données du tableau
-  doc.setFont('helvetica', 'normal');
-  scoreData.forEach((row, index) => {
-    checkPageBreak(rowHeight + 3);
-    if (index === 0) {
-      doc.setTextColor(...primaryColor);
-      doc.setFont('helvetica', 'bold');
-    } else {
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
-    }
-    doc.text(row[0], colX[0], yPosition);
-    doc.text(row[1], colX[1], yPosition);
-    if (row[2]) {
-      doc.setFontSize(9);
-      doc.setTextColor(...grayColor);
-      doc.text(row[2], colX[2], yPosition);
-      doc.setFontSize(10);
-    }
+    // En-têtes du tableau
+    doc.setFont('helvetica', 'bold');
+    doc.text('Catégorie', colX[0], yPosition);
+    doc.setTextColor(...primaryColor);
+    doc.text('Auto-évaluation', colX[1], yPosition);
+    doc.setTextColor(...managerColor);
+    doc.text('Évaluation Manager', colX[2], yPosition);
+    doc.setTextColor(0, 0, 0);
     yPosition += rowHeight;
-  });
+
+    // Ligne de séparation
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
+    yPosition += 3;
+
+    // Données du tableau comparatif
+    const scoreDataCompare = [
+      ['Score Total', `${scores.total.toFixed(1)}%`, `${scoresMgr.total.toFixed(1)}%`],
+      ['Soft Skills', `${scores.softSkills.toFixed(1)}%`, `${scoresMgr.softSkills.toFixed(1)}%`],
+      ['Hard Skills', `${scores.hardSkills.toFixed(1)}%`, `${scoresMgr.hardSkills.toFixed(1)}%`],
+      ['Performance Projet', `${scores.performanceProjet.toFixed(1)}%`, `${scoresMgr.performanceProjet.toFixed(1)}%`],
+      ['Compétences IA', `${scores.competencesIA.toFixed(1)}%`, `${scoresMgr.competencesIA.toFixed(1)}%`],
+    ];
+
+    scoreDataCompare.forEach((row) => {
+      checkPageBreak(rowHeight + 3);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      doc.text(row[0], colX[0], yPosition);
+      doc.setTextColor(...primaryColor);
+      doc.text(row[1], colX[1], yPosition);
+      doc.setTextColor(...managerColor);
+      doc.text(row[2], colX[2], yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += rowHeight;
+    });
+  } else {
+    // Tableau simple sans comparaison
+    const scoreData = [
+      ['Score Total', `${scores.total.toFixed(1)}%`, ''],
+      ['Soft Skills', `${scores.softSkills.toFixed(1)}%`, `${moyenneSoftSkills.toFixed(1)}/5`],
+      ['Hard Skills', `${scores.hardSkills.toFixed(1)}%`, `${(moyenneHardSkills * 2).toFixed(1)}/10`],
+      ['Performance Projet', `${scores.performanceProjet.toFixed(1)}%`, `${(moyennePerformanceProjet * 2).toFixed(1)}/10`],
+      ['Compétences IA', `${scores.competencesIA.toFixed(1)}%`, `${(moyenneIA * 2).toFixed(1)}/10`],
+    ];
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const rowHeight = 8;
+    const colWidths = [70, 40, 30];
+    const colX = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1]];
+
+    // En-têtes du tableau
+    doc.setFont('helvetica', 'bold');
+    doc.text('Catégorie', colX[0], yPosition);
+    doc.text('Score', colX[1], yPosition);
+    doc.text('Détail', colX[2], yPosition);
+    yPosition += rowHeight;
+
+    // Ligne de séparation
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
+    yPosition += 3;
+
+    // Données du tableau
+    doc.setFont('helvetica', 'normal');
+    scoreData.forEach((row, index) => {
+      checkPageBreak(rowHeight + 3);
+      if (index === 0) {
+        doc.setTextColor(...primaryColor);
+        doc.setFont('helvetica', 'bold');
+      } else {
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'normal');
+      }
+      doc.text(row[0], colX[0], yPosition);
+      doc.text(row[1], colX[1], yPosition);
+      if (row[2]) {
+        doc.setFontSize(9);
+        doc.setTextColor(...grayColor);
+        doc.text(row[2], colX[2], yPosition);
+        doc.setFontSize(10);
+      }
+      yPosition += rowHeight;
+    });
+  }
 
   yPosition += 10;
 
@@ -162,9 +220,18 @@ export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: An
   doc.text('Niveau Intelligence Artificielle', margin, yPosition);
   yPosition += 8;
   doc.setFontSize(11);
-  doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Niveau actuel : ${NIVEAU_IA_LABELS[scores.niveauIA]}`, margin, yPosition);
+  if (hasManagerEvaluation && scoresMgr) {
+    doc.setTextColor(...primaryColor);
+    doc.text(`Auto-évaluation : ${NIVEAU_IA_LABELS[scores.niveauIA]}`, margin, yPosition);
+    yPosition += 7;
+    doc.setTextColor(...managerColor);
+    doc.text(`Évaluation Manager : ${NIVEAU_IA_LABELS[scoresMgr.niveauIA]}`, margin, yPosition);
+    doc.setTextColor(0, 0, 0);
+  } else {
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Niveau actuel : ${NIVEAU_IA_LABELS[scores.niveauIA]}`, margin, yPosition);
+  }
   yPosition += 15;
 
   // Analyse des compétences
@@ -231,6 +298,25 @@ export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: An
         yPosition += 7;
       });
     });
+  }
+  
+  // Plan de progression de l'analyse Gemini si disponible
+  if (evaluation.analyseGemini?.planProgression && evaluation.analyseGemini.planProgression.length > 0) {
+    checkPageBreak(25);
+    doc.setFontSize(12);
+    doc.setTextColor(...purpleColor);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Plan de progression (6-12 mois)', margin, yPosition);
+    yPosition += 8;
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    evaluation.analyseGemini.planProgression.forEach((etape, index) => {
+      checkPageBreak(7);
+      doc.text(`${index + 1}. ${etape}`, margin + 5, yPosition);
+      yPosition += 7;
+    });
+    yPosition += 5;
   }
   
   // Analyse détaillée si disponible
@@ -316,13 +402,31 @@ export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: An
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     reponsesGroupe.forEach((reponse, index) => {
-      checkPageBreak(25);
+      // Calculer la hauteur nécessaire pour cette réponse
+      const questionLines = doc.splitTextToSize(`${index + 1}. ${reponse.question}`, pageWidth - 2 * margin - 10);
+      let requiredHeight = questionLines.length * 6 + 10; // Question + espace
+      if (reponse.categorieIA) requiredHeight += 6; // Badge IA
+      requiredHeight += 6; // Label Auto-évaluation
+      requiredHeight += 6; // Note auto
+      if (reponse.commentaireCollaborateur) {
+        const commentLines = doc.splitTextToSize(`"${reponse.commentaireCollaborateur}"`, pageWidth - 2 * margin - 25);
+        requiredHeight += commentLines.length * 5 + 2;
+      }
+      if (reponse.noteManager !== undefined) {
+        requiredHeight += 10; // Label + Note manager
+        if (reponse.commentaireManager) {
+          const commentMgrLines = doc.splitTextToSize(`"${reponse.commentaireManager}"`, pageWidth - 2 * margin - 25);
+          requiredHeight += commentMgrLines.length * 5;
+        }
+      }
+      requiredHeight += 8; // Espace final
+      
+      checkPageBreak(requiredHeight);
       
       // Question
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      const questionText = `${index + 1}. ${reponse.question}`;
-      const questionLines = doc.splitTextToSize(questionText, pageWidth - 2 * margin - 10);
+      // Réutiliser questionLines déjà calculé pour le checkPageBreak
       questionLines.forEach((line: string) => {
         doc.text(line, margin + 5, yPosition);
         yPosition += 6;
@@ -337,46 +441,98 @@ export async function exportEvaluationToPDF(evaluation: Evaluation, analyse?: An
         doc.setFontSize(9);
       }
 
-      // Note
-      doc.setTextColor(0, 0, 0);
+      // Note auto-évaluation
+      yPosition += 3;
+      doc.setFontSize(9);
+      doc.setTextColor(...primaryColor);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Note : ${reponse.noteCollaborateur}/5 - ${NOTE_LABELS[reponse.noteCollaborateur]}`, margin + 10, yPosition);
+      const noteAutoText = `AutNote ${reponse.noteCollaborateur}/5 ${NOTE_LABELS[reponse.noteCollaborateur]}`;
+      doc.text(noteAutoText, margin + 10, yPosition);
       yPosition += 6;
 
-      // Commentaire si présent
+      // Commentaire collaborateur si présent
       if (reponse.commentaireCollaborateur) {
         doc.setFontSize(8);
         doc.setTextColor(...grayColor);
         doc.setFont('helvetica', 'italic');
         const commentText = `"${reponse.commentaireCollaborateur}"`;
-        const commentLines = doc.splitTextToSize(commentText, pageWidth - 2 * margin - 15);
+        const commentLines = doc.splitTextToSize(commentText, pageWidth - 2 * margin - 25);
         commentLines.forEach((line: string) => {
           checkPageBreak(5);
-          doc.text(line, margin + 10, yPosition);
+          doc.text(line, margin + 15, yPosition);
           yPosition += 5;
         });
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
+        yPosition += 2;
       }
 
-      yPosition += 5;
+      // Note manager si présente
+      if (reponse.noteManager !== undefined) {
+        yPosition += 3;
+        doc.setFontSize(9);
+        doc.setTextColor(...managerColor);
+        doc.setFont('helvetica', 'normal');
+        const noteMgrText = `ÉvaNote ${reponse.noteManager}/5 ${NOTE_LABELS[reponse.noteManager]}`;
+        doc.text(noteMgrText, margin + 10, yPosition);
+        yPosition += 6;
+
+        // Commentaire manager si présent
+        if (reponse.commentaireManager) {
+          doc.setFontSize(8);
+          doc.setTextColor(...managerColor);
+          doc.setFont('helvetica', 'italic');
+          const commentMgrText = `"${reponse.commentaireManager}"`;
+          const commentMgrLines = doc.splitTextToSize(commentMgrText, pageWidth - 2 * margin - 25);
+          commentMgrLines.forEach((line: string) => {
+            checkPageBreak(5);
+            doc.text(line, margin + 15, yPosition);
+            yPosition += 5;
+          });
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'normal');
+        }
+      }
+
+      yPosition += 8;
     });
 
     yPosition += 5;
   });
 
-  // Commentaire final si présent
+  // Commentaire collaborateur si présent
   if (evaluation.commentaires?.collaborateur) {
     checkPageBreak(25);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Commentaire final', margin, yPosition);
+    doc.text('Commentaire collaborateur', margin, yPosition);
     yPosition += 8;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     const commentaire = evaluation.commentaires.collaborateur;
     const splitCommentaire = doc.splitTextToSize(commentaire, pageWidth - 2 * margin);
     splitCommentaire.forEach((line: string) => {
+      checkPageBreak(7);
+      doc.text(line, margin, yPosition);
+      yPosition += 7;
+    });
+    yPosition += 5;
+  }
+
+  // Commentaire manager si présent
+  if (hasManagerEvaluation && evaluation.commentaires?.manager) {
+    checkPageBreak(25);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...managerColor);
+    doc.text('Commentaires Manager', margin, yPosition);
+    yPosition += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    const commentaireMgr = evaluation.commentaires.manager;
+    const splitCommentaireMgr = doc.splitTextToSize(commentaireMgr, pageWidth - 2 * margin);
+    splitCommentaireMgr.forEach((line: string) => {
       checkPageBreak(7);
       doc.text(line, margin, yPosition);
       yPosition += 7;
