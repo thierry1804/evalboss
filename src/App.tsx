@@ -17,7 +17,14 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/questionnaire/:evaluationId" element={<Questionnaire />} />
         <Route path="/resultats/:evaluationId" element={<Resultats />} />
-        <Route path="/evaluation/:id" element={<EvaluationView />} />
+        <Route
+          path="/evaluation/:id"
+          element={
+            <ProtectedRoute>
+              <EvaluationView />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Routes admin - non protégées */}
         <Route path="/admin/login" element={<Login />} />

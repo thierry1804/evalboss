@@ -23,6 +23,7 @@ export function EvaluationView() {
   const [managerReponses, setManagerReponses] = useState<Reponse[]>([]);
   const [scoresManager, setScoresManager] = useState<ScoreDetail | null>(null);
   const [commentaireManager, setCommentaireManager] = useState<string>('');
+  const [managerName, setManagerName] = useState<string>('');
 
   useEffect(() => {
     if (id) {
@@ -93,52 +94,171 @@ export function EvaluationView() {
         // Charger les données manager depuis evaluations_manager (peut échouer si RLS bloque)
         // On essaie d'abord depuis evaluations_manager, sinon on utilise les données dans evaluations
         try {
-          const { data: managerEvalData, error: managerEvalError } = await supabase
+          // Charger toutes les évaluations manager pour cette évaluation
+          const { data: managerEvalDataList, error: managerEvalError } = await supabase
             .from('evaluations_manager')
             .select('*')
             .eq('evaluation_id', id)
-            .maybeSingle();
+            .order('updated_at', { ascending: false });
 
-          if (managerEvalData && !managerEvalError) {
+          console.log('Requête evaluations_manager:', {
+            evaluation_id: id,
+            data: managerEvalDataList,
+            error: managerEvalError,
+            count: managerEvalDataList?.length || 0,
+          });
+
+          if (managerEvalError) {
+            console.error('Erreur lors du chargement des évaluations manager:', managerEvalError);
+          }
+
+          if (managerEvalDataList && managerEvalDataList.length > 0 && !managerEvalError) {
+            // Utiliser la première évaluation manager (la plus récente)
+            const managerEvalData = managerEvalDataList[0];
+            
+            // Charger les informations du manager séparément
+            if (managerEvalData.manager_id) {
+              const { data: managerInfo, error: managerInfoError } = await supabase
+                .from('managers')
+                .select('nom, email')
+                .eq('id', managerEvalData.manager_id)
+                .maybeSingle();
+              
+              if (managerInfo && !managerInfoError) {
+                if (managerInfo.nom) {
+                  setManagerName(managerInfo.nom);
+                } else if (managerInfo.email) {
+                  setManagerName(managerInfo.email);
+                } else {
+                  setManagerName('Manager');
+                }
+              } else {
+                setManagerName('Manager');
+              }
+            } else {
+              setManagerName('Manager');
+            }
+
             // Utiliser les réponses manager depuis evaluations_manager
             const managerReponsesData = (managerEvalData.reponses_manager as any[]) || [];
+            console.log('Données manager chargées:', {
+              managerEvalData,
+              managerReponsesData,
+              nombreReponses: managerReponsesData.length,
+              commentaireManager: managerEvalData.commentaire_manager,
+            });
+            
             // Fusionner avec les réponses collaborateur pour avoir toutes les informations
             const mergedReponses = evalData.reponses.map((r) => {
-              const managerRep = managerReponsesData.find((mr: any) => mr.id === r.id || mr.questionId === r.questionId);
+              // Essayer plusieurs façons de faire correspondre les réponses
+              const managerRep = managerReponsesData.find((mr: any) => {
+                // Correspondance par ID de réponse
+                if (mr.id && r.id && mr.id === r.id) return true;
+                // Correspondance par questionId
+                if (mr.questionId && r.questionId && mr.questionId === r.questionId) return true;
+                // Correspondance par question (texte)
+                if (mr.question && r.question && mr.question === r.question) return true;
+                return false;
+              });
+              
               return {
                 ...r,
                 noteManager: managerRep?.noteManager !== undefined ? managerRep.noteManager : undefined,
                 commentaireManager: managerRep?.commentaireManager || undefined,
               };
             });
-            setManagerReponses(mergedReponses);
-            setCommentaireManager(managerEvalData.commentaire_manager || '');
-            if (managerEvalData.scores_manager) {
-              setScoresManager(managerEvalData.scores_manager as ScoreDetail);
+            
+            console.log('Réponses fusionnées:', {
+              total: mergedReponses.length,
+              avecNotesManager: mergedReponses.filter(r => r.noteManager !== undefined).length,
+              avecCommentairesManager: mergedReponses.filter(r => r.commentaireManager).length,
+            });
+            
+            // Vérifier si on a vraiment des notes manager après fusion
+            const hasAnyManagerNotes = mergedReponses.some(r => r.noteManager !== undefined);
+            
+            if (hasAnyManagerNotes || managerEvalData.commentaire_manager) {
+              // On a des données manager valides
+              setManagerReponses(mergedReponses);
+              setCommentaireManager(managerEvalData.commentaire_manager || '');
+              if (managerEvalData.scores_manager) {
+                setScoresManager(managerEvalData.scores_manager as ScoreDetail);
+              }
+            } else {
+              // Pas de données manager dans evaluations_manager, essayer evaluations.reponses
+              console.log('Pas de notes manager trouvées après fusion, vérification dans evaluations.reponses');
+              const reponsesWithManager = evalData.reponses.filter(r => r.noteManager !== undefined);
+              if (reponsesWithManager.length > 0) {
+                setManagerReponses(evalData.reponses);
+                console.log('Utilisation des données manager depuis evaluations.reponses');
+              }
+              if (evalData.scores.manager) {
+                setScoresManager(evalData.scores.manager as ScoreDetail);
+              }
+              setCommentaireManager(evalData.commentaires?.manager || '');
+              setManagerName('');
             }
           } else {
             // Pas de données manager dans evaluations_manager, utiliser les données dans evaluations
             // Les réponses peuvent avoir des notes manager si elles ont été fusionnées
+            console.log('Aucune évaluation manager trouvée dans evaluations_manager, vérification dans evaluations');
+            console.log('Structure des réponses dans evaluations:', evalData.reponses.map(r => ({
+              id: r.id,
+              questionId: r.questionId,
+              question: r.question?.substring(0, 50),
+              noteCollaborateur: r.noteCollaborateur,
+              noteManager: r.noteManager,
+              hasCommentaireManager: !!r.commentaireManager,
+            })));
+            
             const reponsesWithManager = evalData.reponses.filter(r => r.noteManager !== undefined);
+            console.log('Réponses avec notes manager dans evaluations:', reponsesWithManager.length);
+            
+            // Toujours initialiser managerReponses avec les réponses, même si elles n'ont pas de notes manager
+            // Cela permet d'afficher correctement les données
+            setManagerReponses(evalData.reponses);
+            
             if (reponsesWithManager.length > 0) {
-              setManagerReponses(evalData.reponses);
+              console.log('Utilisation des données manager depuis evaluations.reponses');
+            } else {
+              console.log('Aucune note manager trouvée dans evaluations.reponses');
             }
             if (evalData.scores.manager) {
               setScoresManager(evalData.scores.manager);
             }
             setCommentaireManager(evalData.commentaires?.manager || '');
+            setManagerName('');
           }
-        } catch (managerError) {
+        } catch (managerError: any) {
           // Si l'accès à evaluations_manager est bloqué par RLS, utiliser les données dans evaluations
-          console.log('Accès à evaluations_manager bloqué, utilisation des données dans evaluations');
+          console.error('Erreur lors du chargement des évaluations manager:', managerError);
+          console.log('Tentative d\'utilisation des données dans evaluations');
+          console.log('Structure des réponses dans evaluations:', evalData.reponses.map(r => ({
+            id: r.id,
+            questionId: r.questionId,
+            question: r.question?.substring(0, 50),
+            noteCollaborateur: r.noteCollaborateur,
+            noteManager: r.noteManager,
+            hasCommentaireManager: !!r.commentaireManager,
+          })));
+          
           const reponsesWithManager = evalData.reponses.filter(r => r.noteManager !== undefined);
+          console.log('Réponses avec notes manager dans evaluations:', reponsesWithManager.length);
+          
+          // Toujours initialiser managerReponses avec les réponses, même si elles n'ont pas de notes manager
+          setManagerReponses(evalData.reponses);
+          
           if (reponsesWithManager.length > 0) {
-            setManagerReponses(evalData.reponses);
+            console.log('Utilisation des données manager depuis evaluations.reponses (fallback)');
+          } else {
+            console.log('Aucune note manager trouvée dans evaluations.reponses (fallback)');
           }
+          
           if (evalData.scores.manager) {
             setScoresManager(evalData.scores.manager);
           }
           setCommentaireManager(evalData.commentaires?.manager || '');
+          setManagerName('');
         }
       }
     } catch (err: any) {
@@ -399,7 +519,9 @@ export function EvaluationView() {
             {scoresMgr ? (
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-purple-600"></div>
-                <span className="text-sm font-medium text-gray-700">Évaluation Manager</span>
+                <span className="text-sm font-medium text-gray-700">
+                  Évaluation Manager{managerName ? ` - ${managerName}` : ''}
+                </span>
               </div>
             ) : (
               <div className="text-sm text-gray-400 italic">
@@ -674,8 +796,27 @@ export function EvaluationView() {
                   <h4 className="text-xl font-semibold text-gray-900 mb-6">{GROUPE_LABELS[groupe]}</h4>
                   <div className="space-y-6">
                     {reponsesGroupe.map((reponse) => {
-                      const managerRep = managerReponses.find((mr) => mr.id === reponse.id || mr.questionId === reponse.questionId);
+                      // Essayer plusieurs façons de trouver la réponse manager correspondante
+                      const managerRep = managerReponses.find((mr) => {
+                        // Correspondance par ID de réponse
+                        if (mr.id && reponse.id && mr.id === reponse.id) return true;
+                        // Correspondance par questionId
+                        if (mr.questionId && reponse.questionId && mr.questionId === reponse.questionId) return true;
+                        // Correspondance par question (texte) - fallback
+                        if (mr.question && reponse.question && mr.question === reponse.question) return true;
+                        return false;
+                      });
                       const hasManagerNote = managerRep?.noteManager !== undefined;
+                      
+                      // Log de débogage si on ne trouve pas de correspondance mais qu'il y a des données manager
+                      if (!hasManagerNote && managerReponses.length > 0 && managerReponses.some(mr => mr.noteManager !== undefined)) {
+                        console.log('Pas de correspondance trouvée pour:', {
+                          reponseId: reponse.id,
+                          reponseQuestionId: reponse.questionId,
+                          reponseQuestion: reponse.question?.substring(0, 50),
+                          managerReponsesIds: managerReponses.map(mr => ({ id: mr.id, questionId: mr.questionId })),
+                        });
+                      }
                       
                       return (
                         <div key={reponse.id} className="border border-gray-200 rounded-lg p-4 bg-white">
@@ -724,7 +865,9 @@ export function EvaluationView() {
                                 <>
                                   <div className="flex items-center gap-2 mb-3">
                                     <div className="w-3 h-3 rounded-full bg-purple-600"></div>
-                                    <h6 className="font-semibold text-gray-900">Évaluation Manager</h6>
+                                    <h6 className="font-semibold text-gray-900">
+                                      Évaluation Manager{managerName ? ` - ${managerName}` : ''}
+                                    </h6>
                                   </div>
                                   <div className="space-y-2">
                                     <div className="flex items-center gap-2">
@@ -789,7 +932,9 @@ export function EvaluationView() {
             )}
             {(commentaireManager || evaluation.commentaires?.manager) && (
               <div>
-                <h4 className="font-medium text-gray-700 mb-2">Commentaire manager</h4>
+                <h4 className="font-medium text-gray-700 mb-2">
+                  Commentaire manager{managerName ? ` - ${managerName}` : ''}
+                </h4>
                 <p className="text-gray-600 whitespace-pre-line bg-gray-50 p-4 rounded-lg">
                   {commentaireManager || evaluation.commentaires?.manager}
                 </p>

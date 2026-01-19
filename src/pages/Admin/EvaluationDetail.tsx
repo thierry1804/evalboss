@@ -28,6 +28,10 @@ export function EvaluationDetail() {
   const [analyseIA, setAnalyseIA] = useState<AnalyseGemini | null>(null);
   const [isGeneratingAnalyse, setIsGeneratingAnalyse] = useState(false);
   const [isGeneratingCommentSuggestion, setIsGeneratingCommentSuggestion] = useState(false);
+  const [managerName, setManagerName] = useState<string>('');
+  const [currentManagerId, setCurrentManagerId] = useState<string | null>(null);
+  const [isViewingOwnEvaluation, setIsViewingOwnEvaluation] = useState<boolean>(false);
+  const [managerEvaluationDate, setManagerEvaluationDate] = useState<Date | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -108,34 +112,100 @@ export function EvaluationDetail() {
         setEvaluation(evalData);
         setAnalyseIA(analyseGemini || null);
         
-        // Charger les données manager depuis evaluations_manager
+        // Charger toutes les évaluations manager pour cette évaluation (pas seulement celle de l'utilisateur connecté)
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: managerEvalData, error: managerEvalError } = await supabase
-            .from('evaluations_manager')
-            .select('*')
-            .eq('evaluation_id', id)
-            .eq('manager_id', user.id)
-            .maybeSingle();
+        
+        // Charger toutes les évaluations manager
+        const { data: managerEvalDataList, error: managerEvalError } = await supabase
+          .from('evaluations_manager')
+          .select('*')
+          .eq('evaluation_id', id)
+          .order('updated_at', { ascending: false });
 
-          // Avec maybeSingle(), data sera null si aucune ligne trouvée (pas d'erreur)
-          if (managerEvalData && !managerEvalError) {
-            // Utiliser les réponses manager depuis evaluations_manager
-            const managerReponses = (managerEvalData.reponses_manager as any[]) || [];
-            // Fusionner avec les réponses collaborateur pour avoir toutes les informations
-            const mergedReponses = evalData.reponses.map((r) => {
-              const managerRep = managerReponses.find((mr: any) => mr.id === r.id);
-              return {
-                ...r,
-                noteManager: managerRep?.noteManager !== undefined ? managerRep.noteManager : undefined,
-                commentaireManager: managerRep?.commentaireManager || undefined,
-              };
-            });
-            setManagerReponses(mergedReponses);
-            setCommentaireManager(managerEvalData.commentaire_manager || '');
-            if (managerEvalData.scores_manager) {
-              setScoresManager(managerEvalData.scores_manager as ScoreDetail);
+        console.log('Évaluations manager chargées:', {
+          count: managerEvalDataList?.length || 0,
+          data: managerEvalDataList,
+          error: managerEvalError,
+        });
+
+        if (managerEvalDataList && managerEvalDataList.length > 0 && !managerEvalError) {
+          // Chercher d'abord l'évaluation de l'utilisateur connecté, sinon utiliser la première disponible
+          let managerEvalData = managerEvalDataList.find(me => user && me.manager_id === user.id);
+          if (!managerEvalData) {
+            // Utiliser la première évaluation manager (la plus récente)
+            managerEvalData = managerEvalDataList[0];
+          }
+          
+          setCurrentManagerId(managerEvalData.manager_id);
+          
+          // Stocker la date de l'évaluation manager (utiliser updated_at si disponible, sinon created_at)
+          if (managerEvalData.updated_at) {
+            setManagerEvaluationDate(new Date(managerEvalData.updated_at));
+          } else if (managerEvalData.created_at) {
+            setManagerEvaluationDate(new Date(managerEvalData.created_at));
+          } else {
+            setManagerEvaluationDate(null);
+          }
+          
+          // Vérifier si l'utilisateur visualise sa propre évaluation
+          if (user && managerEvalData.manager_id === user.id) {
+            setIsViewingOwnEvaluation(true);
+          } else {
+            setIsViewingOwnEvaluation(false);
+          }
+          
+          // Charger les informations du manager
+          if (managerEvalData.manager_id) {
+            const { data: managerInfo, error: managerInfoError } = await supabase
+              .from('managers')
+              .select('nom, email')
+              .eq('id', managerEvalData.manager_id)
+              .maybeSingle();
+            
+            if (managerInfo && !managerInfoError) {
+              if (managerInfo.nom) {
+                setManagerName(managerInfo.nom);
+              } else if (managerInfo.email) {
+                setManagerName(managerInfo.email);
+              } else {
+                setManagerName('Manager');
+              }
+            } else {
+              setManagerName('Manager');
             }
+          } else {
+            setManagerName('Manager');
+          }
+
+          // Utiliser les réponses manager depuis evaluations_manager
+          const managerReponsesData = (managerEvalData.reponses_manager as any[]) || [];
+          // Fusionner avec les réponses collaborateur pour avoir toutes les informations
+          const mergedReponses = evalData.reponses.map((r) => {
+            // Essayer plusieurs façons de faire correspondre les réponses
+            const managerRep = managerReponsesData.find((mr: any) => {
+              if (mr.id && r.id && mr.id === r.id) return true;
+              if (mr.questionId && r.questionId && mr.questionId === r.questionId) return true;
+              if (mr.question && r.question && mr.question === r.question) return true;
+              return false;
+            });
+            return {
+              ...r,
+              noteManager: managerRep?.noteManager !== undefined ? managerRep.noteManager : undefined,
+              commentaireManager: managerRep?.commentaireManager || undefined,
+            };
+          });
+          setManagerReponses(mergedReponses);
+          setCommentaireManager(managerEvalData.commentaire_manager || '');
+          if (managerEvalData.scores_manager) {
+            setScoresManager(managerEvalData.scores_manager as ScoreDetail);
+          }
+        } else {
+          // Pas de données manager dans evaluations_manager, vérifier dans evaluations.reponses
+          console.log('Aucune évaluation manager trouvée, vérification dans evaluations.reponses');
+          const reponsesWithManager = evalData.reponses.filter(r => r.noteManager !== undefined);
+          if (reponsesWithManager.length > 0) {
+            setManagerReponses(evalData.reponses);
+            console.log('Utilisation des données manager depuis evaluations.reponses');
           } else {
             // Sinon, initialiser avec les réponses collaborateur seulement
             setManagerReponses(evalData.reponses.map(r => ({
@@ -143,16 +213,14 @@ export function EvaluationDetail() {
               noteManager: undefined,
               commentaireManager: undefined,
             })));
-            setCommentaireManager(evalData.commentaires?.manager || '');
           }
-        } else {
-          // Pas de manager connecté, initialiser avec les réponses collaborateur
-          setManagerReponses(evalData.reponses.map(r => ({
-            ...r,
-            noteManager: undefined,
-            commentaireManager: undefined,
-          })));
+          if (evalData.scores.manager) {
+            setScoresManager(evalData.scores.manager as ScoreDetail);
+          }
           setCommentaireManager(evalData.commentaires?.manager || '');
+          setManagerName('');
+          setCurrentManagerId(null);
+          setManagerEvaluationDate(null);
         }
       }
     } catch (error: any) {
@@ -602,7 +670,16 @@ export function EvaluationDetail() {
         {/* Scores manager - affichés seulement si le manager a donné des notes */}
         {scoresMgr && (
           <Card className="mb-6">
-            <h3 className="text-lg font-semibold mb-4">Scores Manager</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">
+                Scores Manager{managerName ? ` - ${managerName}` : ''}
+              </h3>
+              {managerEvaluationDate && (
+                <p className="text-sm text-gray-500">
+                  Évalué le {formatDate(managerEvaluationDate)}
+                </p>
+              )}
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-primary-600">{scoresMgr.total.toFixed(1)}%</div>
@@ -706,7 +783,23 @@ export function EvaluationDetail() {
 
         {/* Questions avec saisie manager - Par onglets */}
         <Card className="mb-6">
-          <h3 className="text-lg font-semibold mb-6">Évaluation Manager</h3>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold">
+                Évaluation Manager{managerName ? ` - ${managerName}` : ''}
+              </h3>
+              {managerEvaluationDate && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Évalué le {formatDate(managerEvaluationDate)}
+                </p>
+              )}
+            </div>
+            {!isViewingOwnEvaluation && currentManagerId && (
+              <Badge variant="info" className="text-xs">
+                Évaluation d'un autre manager
+              </Badge>
+            )}
+          </div>
           
           {/* Onglets pour les rubriques */}
           <div className="flex gap-2 mb-6">
@@ -798,8 +891,17 @@ export function EvaluationDetail() {
 
         {/* Commentaire manager global */}
         <Card className="mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">Commentaire Manager</h3>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">
+                Commentaire Manager{managerName ? ` - ${managerName}` : ''}
+              </h3>
+              {managerEvaluationDate && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Évalué le {formatDate(managerEvaluationDate)}
+                </p>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"
