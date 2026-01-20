@@ -200,6 +200,15 @@ export function Dashboard() {
     value: count,
   }));
 
+  // Calculer la valeur maximale pour ajuster l'échelle du graphique des niveaux IA
+  const maxNiveauIACount = barDataNiveauxIA.length > 0 
+    ? Math.max(...barDataNiveauxIA.map(d => d.value))
+    : 0;
+  // Arrondir au multiple de 5 supérieur avec une marge de 20%
+  const maxNiveauIAScale = maxNiveauIACount > 0 
+    ? Math.ceil((maxNiveauIACount * 1.2) / 5) * 5
+    : 10;
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
@@ -295,7 +304,12 @@ export function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <h4 className="font-semibold text-gray-700 mb-4">Répartition des niveaux IA</h4>
-              <BarChartComponent data={barDataNiveauxIA} title="" color="#8b5cf6" />
+              <BarChartComponent 
+                data={barDataNiveauxIA} 
+                title="" 
+                color="#8b5cf6" 
+                maxValue={maxNiveauIAScale}
+              />
             </div>
             
             <div>
