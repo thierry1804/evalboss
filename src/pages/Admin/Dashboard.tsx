@@ -45,10 +45,34 @@ export function Dashboard() {
       if (data) {
         const evaluations = data as any[];
 
+        // Charger les évaluations manager pour déterminer quelles évaluations sont validées
+        const { data: managerEvaluations, error: managerError } = await supabase
+          .from('evaluations_manager')
+          .select('evaluation_id, scores_manager')
+          .not('scores_manager', 'is', null);
+
+        if (managerError) {
+          console.warn('Erreur lors du chargement des évaluations manager:', managerError);
+        }
+
+        // Créer un Set des IDs d'évaluations qui ont une évaluation manager
+        const validatedEvaluationIds = new Set<string>();
+        if (managerEvaluations) {
+          managerEvaluations.forEach((me) => {
+            // Vérifier que l'évaluation manager a des scores (pas vide)
+            if (me.scores_manager && Object.keys(me.scores_manager as object).length > 0) {
+              validatedEvaluationIds.add(me.evaluation_id);
+            }
+          });
+        }
+
         const totalEvaluations = evaluations.length;
         const brouillons = evaluations.filter((e) => e.statut === 'brouillon').length;
         const soumises = evaluations.filter((e) => e.statut === 'soumise').length;
-        const validees = evaluations.filter((e) => e.statut === 'validee').length;
+        // Compter comme validées : celles avec statut "validee" OU celles qui ont une évaluation manager
+        const validees = evaluations.filter(
+          (e) => e.statut === 'validee' || validatedEvaluationIds.has(e.id)
+        ).length;
 
         // Calculer les scores moyens
         const scoresMoyens = {
